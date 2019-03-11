@@ -122,6 +122,5 @@ const drawChart = (ctx, viewPort, valueX, valueY) => {
   ctx.restore()
 }
 
-
 drawAxis(ctx, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 }, chartData.columns[0].slice(1), [chartData.columns[1].slice(1), chartData.columns[2].slice(1)])
 drawChart(ctx, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 }, chartData.columns[0].slice(1), [chartData.columns[1].slice(1), chartData.columns[2].slice(1)])
