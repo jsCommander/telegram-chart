@@ -1,5 +1,5 @@
-const chart1 = document.getElementById("chart1")
-chart1.width = 300;
+const chart1 = document.querySelector("#chart1>.chart")
+chart1.width = 800;
 chart1.height = 300;
 const ctx = chart1.getContext("2d")
 
@@ -122,5 +122,46 @@ const drawChart = (ctx, viewPort, valueX, valueY) => {
   ctx.restore()
 }
 
+const drawCharts = (ctx, chartsData, viewPort) => {
+  const width = viewPort ? viewPort.width : ctx.canvas.width;
+  const height = viewPort ? viewPort.height : ctx.canvas.height;
+
+  let axisXvalues;
+  let axisYvalues = [];
+
+  chartsData.columns.forEach(arr => {
+    if (arr[0] === "x") {
+      axisXvalues = arr.slice(1);
+    } else {
+      axisYvalues.push({ name: arr[0], values: arr.slice(1) });
+    }
+  })
+
+  const axisXstep = Math.ceil(width / axisXvalues.length);
+  // find max value in all chart and calculate scaling
+  const maxValue = axisYvalues.reduce((max, x) => max = Math.max(max, ...x.values), 0)
+  const axisYscale = height / maxValue;
+
+  ctx.save();
+
+  ctx.lineWidth = 3;
+
+  axisYvalues.forEach(chart => {
+    ctx.strokeStyle = chartsData.colors[chart.name];
+    ctx.fillStyle = chartsData.colors[chart.name];
+
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(viewPort.height - chart.values[0] * axisYscale));
+    chart.values.forEach((value, i) => {
+      ctx.lineTo(Math.round(i * axisXstep), Math.round(viewPort.height - value * axisYscale))
+      ctx.fillText(value, Math.round(i * axisXstep) + 5, Math.round(viewPort.height - value * axisYscale) + 15);
+    })
+    ctx.stroke()
+  })
+
+  ctx.restore()
+}
+
 drawAxis(ctx, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 }, chartData.columns[0].slice(1), [chartData.columns[1].slice(1), chartData.columns[2].slice(1)])
-drawChart(ctx, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 }, chartData.columns[0].slice(1), [chartData.columns[1].slice(1), chartData.columns[2].slice(1)])
+drawCharts(ctx, chartData, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 })
+// drawChart(ctx, { x: 5, y: 5, width: ctx.canvas.width - 5, height: ctx.canvas.height - 5 }, chartData.columns[0].slice(1), [chartData.columns[1].slice(1), chartData.columns[2].slice(1)])
