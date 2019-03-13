@@ -19,6 +19,6 @@ module.exports = {
   },
   output: {
     filename: "telegram-chart.js",
-    path: path.resolve(__dirname, "docs")
+    path: path.resolve(__dirname, "dist")
   }
 };

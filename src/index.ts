@@ -1,4 +1,6 @@
-import { Chart, IChartData } from "./Chart";
+import { MainChart } from "./MainChart";
+import { ControlChart } from "./ControlChart"
+import { IChartData } from "./interfaces";
 
 const data: IChartData = {
   "columns": [
@@ -363,15 +365,26 @@ const data: IChartData = {
   }
 }
 
-const canvas = document.getElementById("chart1");
-const chart = new Chart(canvas as HTMLCanvasElement, data);
+const chart_container = document.getElementById("chart1");
+const chart = chart_container.querySelector(".canvas.chart") as HTMLCanvasElement;
+const control = chart_container.querySelector(".canvas.control") as HTMLCanvasElement;
+
+const view = {
+  x: 10,
+  y: 10,
+  width: chart.width - 10,
+  height: chart.height - 10
+
+}
+const x = new MainChart(chart, data);
+const y = new ControlChart(control, data);
+
 const start = document.getElementById("start") as HTMLInputElement;
 const end = document.getElementById("end") as HTMLInputElement;
 const btn = document.getElementById("btn");
-if (btn && start && end) {
-  btn.addEventListener("click", e => {
-    chart.draw(parseInt(start.value), parseInt(end.value))
-  })
-}
+btn.addEventListener("click", e => {
+  x.draw(parseInt(start.value), parseInt(end.value))
+})
 
-chart.draw(0, 10);
+x.draw(0, 10);
+y.draw()
