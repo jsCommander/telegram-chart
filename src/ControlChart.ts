@@ -40,15 +40,9 @@ export class ControlChart extends BaseChart {
         this.isDragBegin = false;
       }
     })
-    let lastTime = Date.now()
     this.ctx.canvas.addEventListener("mousemove", e => {
       if (this.isDragBegin) {
-        const dateNow = Date.now()
-        if (dateNow - lastTime > 100) {
-          lastTime = dateNow;
-          this.drawOverlayAnimation(e.offsetX)
-        }
-
+        this.drawOverlayAnimation(e.offsetX)
       }
     })
   }
