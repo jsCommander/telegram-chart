@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "webpack",
+    "start": "webpack --config webpack.dev.js",
+    "build": "webpack --config webpack.prod.js",
     "deploy": "push-dir --dir=dist --branch=gh-pages"
   },
   "author": "jsCommander",
@@ -14,7 +15,10 @@
     "push-dir": "^0.4.1",
     "ts-loader": "^5.3.3",
     "typescript": "^3.2.4",
+    "uglifyjs-webpack-plugin": "^2.1.2",
     "webpack": "^4.29.0",
-    "webpack-cli": "^3.2.1"
+    "webpack-cli": "^3.2.1",
+    "webpack-dev-server": "^3.2.1",
+    "webpack-merge": "^4.2.1"
   }
 }

@@ -1,24 +1,10 @@
 import { IRect, IChartData, IChart } from "./interfaces";
-
-const config = {
-  chartCanvas: {
-    width: 600,
-    height: 600
-  },
-  controlCanvas: {
-    width: 600,
-    height: 300
-  },
-  supportLine: {
-    count: 6,
-    color: "#a7a7a7",
-    font: "12px serif",
-  }
-}
+import { config } from "./config"
 
 export abstract class BaseChart {
   protected ctx: CanvasRenderingContext2D;
   protected viewRect: IRect;
+  protected theme: string = "white"
   constructor(canvas: HTMLCanvasElement, view?: IRect) {
     this.ctx = canvas.getContext("2d");
 
@@ -31,17 +17,17 @@ export abstract class BaseChart {
   }
 
   protected drawHorizontalGrid(maxYvalue: number) {
-    const axisYpixelStep = this.viewRect.height / config.supportLine.count;
-    const axisYvalueStep = Math.round(maxYvalue / config.supportLine.count);
+    const axisYpixelStep = this.viewRect.height / config.gridHorizontalLineCount;
+    const axisYvalueStep = Math.round(maxYvalue / config.gridHorizontalLineCount);
 
     this.ctx.save();
-    this.ctx.strokeStyle = config.supportLine.color;
-    this.ctx.fillStyle = config.supportLine.color;
-    this.ctx.lineWidth = 1;
-    this.ctx.font = config.supportLine.font;
+    this.ctx.strokeStyle = config.themes[this.theme].gridLineColor;
+    this.ctx.fillStyle = config.themes[this.theme].legendFontColor;
+    this.ctx.lineWidth = config.gridLineWidth;
+    this.ctx.font = config.legendYfont;
 
     // draw horizontal lines
-    for (let i = 0; i < config.supportLine.count; i++) {
+    for (let i = 0; i < config.gridHorizontalLineCount; i++) {
       const height = this.viewRect.height - (axisYpixelStep * i)
       const value = axisYvalueStep * i
       this.ctx.beginPath()
@@ -56,10 +42,9 @@ export abstract class BaseChart {
 
   protected drawVerticalGrid(axisXcords: number[]) {
     this.ctx.save();
-    this.ctx.strokeStyle = config.supportLine.color;
-    this.ctx.fillStyle = config.supportLine.color;
-    this.ctx.lineWidth = 1;
-    this.ctx.font = config.supportLine.font;
+    this.ctx.strokeStyle = config.themes[this.theme].gridLineColor;
+    this.ctx.fillStyle = config.themes[this.theme].gridLineColor;
+    this.ctx.lineWidth = config.gridLineWidth;
 
     // draw vertical lines
     axisXcords.forEach(x => {
@@ -100,7 +85,7 @@ export abstract class BaseChart {
   protected drawCharts(charts: IChart[], drawValues = false) {
     charts.forEach(chart => {
       this.ctx.save();
-      this.ctx.lineWidth = 3;
+      this.ctx.lineWidth = config.chartLineWidth;
       this.ctx.strokeStyle = chart.color;
       this.ctx.fillStyle = chart.color;
       this.ctx.beginPath();
@@ -142,12 +127,14 @@ export abstract class BaseChart {
     return maxYValue;
   }
 
-  protected createCanvasOverlay(canvasClassName: string): HTMLCanvasElement {
-    const overlay = this.ctx.canvas.cloneNode() as HTMLCanvasElement
-    overlay.classList.add(canvasClassName);
-    this.ctx.canvas.parentElement.appendChild(overlay);
-    return overlay;
+  protected isPointInRect(rect: IRect, x: number, y: number, offsetX = 0, offsetY = 0): boolean {
+    return (rect.x - offsetX < x && x < rect.x + rect.width + offsetX) && (rect.y - offsetY < y && y < rect.y + rect.height + offsetY)
   }
+
+  protected strokeRect(ctx: CanvasRenderingContext2D, rect: IRect) {
+    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  }
+
   protected clearCtx(ctx: CanvasRenderingContext2D) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
   }

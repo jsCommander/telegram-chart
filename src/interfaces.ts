@@ -4,6 +4,12 @@ export interface IChartData {
   names: { [id: string]: string };
   colors: { [id: string]: string };
 }
+interface IChartData2 {
+  columns: { 0: string, [index: number]: number | string };
+  types: { [id: string]: "line" | "x" };
+  names: { [id: string]: string };
+  colors: { [id: string]: string };
+}
 
 export interface IRect extends IPoint {
   width: number;

@@ -1,41 +1,56 @@
-import { IRect, IChartData } from "./interfaces";
+import { IRect, IChartData, IChart } from "./interfaces";
 import { BaseChart } from "./BaseChart";
+import { config } from "./config"
 
-interface IChartPoints {
-  x: number[];
-  y: number[];
-  values: number[];
-  // legend: string;
-}
-
-interface IChart {
-  name: string;
-  color: string;
-  points: IChartPoints;
-}
-
-const config = {
-  chartCanvas: {
-    width: 600,
-    height: 600
-  },
-  controlCanvas: {
-    width: 600,
-    height: 300
-  },
-  supportLine: {
-    count: 6,
-    color: "#a7a7a7",
-    font: "12px serif",
-  }
-}
+type onChangeCallback = (beginOffset: number, endOffset: number) => void
 
 export class ControlChart extends BaseChart {
-  private overlayCtx: CanvasRenderingContext2D;
+  private isDragBegin = false;
+  private charts?: IChart[];
+  private chartImage?: ImageData;
+  private beginOffset = 50;
+  private selectionPoints = config.selectionMinPoints;
+  private endOffset = this.beginOffset + this.selectionPoints;
+  private selectionOffsetX = 0;
+  private moveType?: "start" | "end" | "all";
+  private callback?: onChangeCallback;
+  private selection?: IRect;
 
   constructor(canvas: HTMLCanvasElement, private chartData: IChartData, view?: IRect) {
     super(canvas, view);
-    this.overlayCtx = this.createCanvasOverlay("overlay").getContext("2d");
+    this.ctx.canvas.addEventListener("mousedown", e => {
+      if (!this.selection) return;
+
+      if (this.isPointInRect(this.selection, e.offsetX, e.offsetY, config.selectionOffsetX)) {
+        this.isDragBegin = true;
+        // clicked at start
+        if ((this.selection.x - config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.x + config.selectionOffsetX)) {
+          this.moveType = "start";
+          //clicked at end
+        } else if ((this.selection.width + this.selection.x - config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.width + this.selection.x + config.selectionOffsetX)) {
+          this.moveType = "end";
+        } else {
+          this.moveType = "all";
+        }
+        this.selectionOffsetX = this.selection.x - e.offsetX;
+      }
+    })
+    this.ctx.canvas.addEventListener("mouseup", e => {
+      if (this.isDragBegin) {
+        this.isDragBegin = false;
+      }
+    })
+    let lastTime = Date.now()
+    this.ctx.canvas.addEventListener("mousemove", e => {
+      if (this.isDragBegin) {
+        const dateNow = Date.now()
+        if (dateNow - lastTime > 100) {
+          lastTime = dateNow;
+          this.drawOverlayAnimation(e.offsetX)
+        }
+
+      }
+    })
   }
 
   public draw() {
@@ -49,22 +64,56 @@ export class ControlChart extends BaseChart {
 
     // find cords for axis X
     const axisXcords = this.getXcords(axisXpixelStep, pointsCount)
-
     const axisYscale = (this.viewRect.height - this.viewRect.y) / maxYValue;
 
     // parse and transform input data to IChart
-    const charts = this.transformDataToIChart(this.chartData, axisXcords, axisYscale, 1, pointsCount);
+    this.charts = this.transformDataToIChart(this.chartData, axisXcords, axisYscale, 1, pointsCount);
 
-    this.drawCharts(charts);
-    /*this.overlayCtx.canvas.addEventListener("mousemove", e => {
-      this.drawOverlayAnimation(charts, e.offsetX)
-    })*/
+    this.drawCharts(this.charts);
+    this.chartImage = this.ctx.getImageData(this.viewRect.x, this.viewRect.y, this.viewRect.width, this.viewRect.height)
+
+    const startX = this.charts[0].points.x[this.beginOffset];
+    const endX = this.charts[0].points.x[this.endOffset];
+
+    this.selection = {
+      x: startX,
+      y: this.viewRect.y,
+      width: endX - startX,
+      height: this.viewRect.height
+    }
+    this.ctx.save()
+    this.ctx.lineWidth = config.selectionOffsetX;
+    this.ctx.strokeStyle = "#ddeaf3aa";
+    this.ctx.fillStyle = "#f5f9fbaa";
+    this.ctx.fillRect(this.viewRect.x, this.viewRect.y, this.viewRect.x + this.selection.x, this.viewRect.height)
+    this.ctx.fillRect(this.selection.x + this.selection.width, this.viewRect.y, this.viewRect.width, this.viewRect.height)
+
+    this.strokeRect(this.ctx, this.selection)
+    if (this.callback) {
+      this.callback(this.beginOffset, this.endOffset);
+    }
+    this.ctx.restore()
+  }
+  public setOnChangeCallback(callback: onChangeCallback) {
+    this.callback = callback;
   }
 
-  private drawOverlayAnimation(charts: IChart[], mouseX: number) {
-    this.clearCtx(this.overlayCtx)
+  private drawOverlayAnimation(mouseX: number) {
+    if (!this.chartImage || !this.charts) return;
 
-    const firstChart = charts[0];
+    this.clearCtx(this.ctx);
+    this.ctx.putImageData(this.chartImage, this.viewRect.x, this.viewRect.y)
+
+    const firstChart = this.charts[0];
+
+    if (this.moveType !== "end") {
+      mouseX += this.selectionOffsetX;
+      mouseX = Math.min(mouseX, this.viewRect.width - this.selection.width)
+    } else {
+      mouseX = Math.min(mouseX, this.viewRect.width)
+    }
+
+    mouseX = Math.max(mouseX, this.viewRect.x)
 
     //find closest
     let closestPointIndex = 0;
@@ -74,45 +123,39 @@ export class ControlChart extends BaseChart {
       }
     }
 
-    // draw support line
-    this.overlayCtx.save();
-    this.overlayCtx.lineWidth = 3;
-    this.overlayCtx.beginPath()
-    this.overlayCtx.moveTo(firstChart.points.x[closestPointIndex], this.viewRect.y)
-    this.overlayCtx.lineTo(firstChart.points.x[closestPointIndex], this.viewRect.height);
-    this.overlayCtx.stroke()
-    this.overlayCtx.restore();
+    if (this.moveType === "start") {
+      this.beginOffset = this.endOffset - closestPointIndex > config.selectionMinPoints ? closestPointIndex : this.endOffset - config.selectionMinPoints;
+      this.selectionPoints = this.endOffset - this.beginOffset;
+    } else if (this.moveType === "end") {
+      this.endOffset = closestPointIndex - this.beginOffset > config.selectionMinPoints ? closestPointIndex : this.beginOffset + config.selectionMinPoints;
+      this.selectionPoints = this.endOffset - this.beginOffset;
+    } else {
+      this.beginOffset = closestPointIndex;
+      this.endOffset = this.beginOffset + this.selectionPoints;
+    }
 
-    // draw cricles
-    charts.forEach(chart => {
-      this.overlayCtx.save();
-      this.overlayCtx.lineWidth = 2;
-      this.overlayCtx.strokeStyle = chart.color;
-      this.overlayCtx.fillStyle = "white";
-      this.overlayCtx.moveTo(chart.points.x[closestPointIndex], chart.points.y[closestPointIndex])
-      this.overlayCtx.beginPath()
-      this.overlayCtx.arc(chart.points.x[closestPointIndex], chart.points.y[closestPointIndex], 5, 0, Math.PI * 2, true);
-      this.overlayCtx.fill()
-      this.overlayCtx.stroke()
-      this.overlayCtx.restore();
-    })
+    const startX = this.charts[0].points.x[this.beginOffset];
+    const endX = this.charts[0].points.x[this.endOffset];
 
-    // draw helper
-    const middle = Math.round((this.viewRect.width - this.viewRect.x) / 2)
-    const square = 30
-      ;
-    this.overlayCtx.save();
-    this.overlayCtx.strokeStyle = config.supportLine.color;
-    this.overlayCtx.fillStyle = "white";
-    this.overlayCtx.strokeRect(middle - square, this.viewRect.y + square, square * 2, square * 2)
-    this.overlayCtx.fillRect(middle - square, this.viewRect.y + square, square * 2, square * 2)
-    this.overlayCtx.restore();
-    charts.forEach((chart, i) => {
-      this.overlayCtx.save();
-      this.overlayCtx.fillStyle = chart.color;
-      this.overlayCtx.fillText(`${chart.points.values[closestPointIndex]}`, middle - square + 20 * i + 10, this.viewRect.y + square * 2);
-      this.overlayCtx.fillText(`${chart.name}`, middle - square + 20 * i + 10, this.viewRect.y + square * 2 + 20);
-      this.overlayCtx.restore();
-    })
+    this.selection = {
+      x: startX,
+      y: this.viewRect.y,
+      width: endX - startX,
+      height: this.viewRect.height
+    }
+
+    // draw before selection 
+    this.ctx.save()
+    this.ctx.lineWidth = config.selectionOffsetX;
+    this.ctx.strokeStyle = "#ddeaf3aa";
+    this.ctx.fillStyle = "#f5f9fbaa";
+    this.ctx.fillRect(this.viewRect.x, this.viewRect.y, this.viewRect.x + this.selection.x, this.viewRect.height)
+    this.ctx.fillRect(this.selection.x + this.selection.width, this.viewRect.y, this.viewRect.width, this.viewRect.height)
+
+    this.strokeRect(this.ctx, this.selection)
+    if (this.callback) {
+      this.callback(this.beginOffset, this.endOffset);
+    }
+    this.ctx.restore()
   }
 }

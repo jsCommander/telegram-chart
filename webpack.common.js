@@ -1,9 +1,8 @@
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
 const path = require("path");
 
 module.exports = {
   entry: "./src/index.ts",
-  mode: "development",
-  devtool: "inline-source-map",
   watch: true,
   module: {
     rules: [
@@ -20,5 +19,5 @@ module.exports = {
   output: {
     filename: "telegram-chart.js",
     path: path.resolve(__dirname, "dist")
-  }
+  },
 };
