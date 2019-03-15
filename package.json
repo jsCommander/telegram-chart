@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "webpack --config webpack.dev.js",
     "build": "webpack --config webpack.prod.js",
-    "deploy": "push-dir --dir=dist --branch=gh-pages"
+    "deploy": "push-dir --dir=dist --cleanup --branch=gh-pages"
   },
   "author": "jsCommander",
   "license": "ISC",
