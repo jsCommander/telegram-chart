@@ -1,104 +1,124 @@
-import { IRect, IChartData, IChart } from "./interfaces";
+import { Rect, InputData, IChart, IChartLine, IGrid, IConfig } from "./interfaces";
 import { BaseChart } from "./BaseChart";
-import { config } from "./config"
 
 export class MainChart extends BaseChart {
-  private charts?: IChart[];
-  private chartImage?: ImageData;
+  private grid: IGrid;
+  private chart?: IChart
+  private lastDrawX: number = 0;
+  constructor(canvas: HTMLCanvasElement, chartData: InputData, config?: IConfig) {
+    super(canvas, chartData, config);
+    this.grid = this.getGrid();
 
-  constructor(canvas: HTMLCanvasElement, private chartData: IChartData, view?: IRect) {
-    super(canvas, view);
-    this.ctx.canvas.addEventListener("mousemove", e => {
-      this.drawOverlayAnimation(e.offsetX)
-    })
-    this.ctx.canvas.addEventListener("touchmove", e => {
-      e.preventDefault();
-      this.drawOverlayAnimation(e.touches[0].clientX - this.ctx.canvas.offsetLeft)
-    })
+    // set onmouse move
+    this.ctx.canvas.addEventListener("mousemove", e => this.mousemoveHandler(e.offsetX));
+    this.ctx.canvas.addEventListener("touchmove", e => this.mousemoveHandler(e.touches[0].clientX - this.ctx.canvas.offsetLeft))
   }
 
   public draw(beginOffset: number = 0, endOffset: number = 10) {
-    this.clearCtx(this.ctx)
-    // incremant to skip first element of array with name
-    beginOffset++;
-    endOffset = endOffset + 1 < this.chartData.columns[0].length ? endOffset + 1 : this.chartData.columns[0].length;
-    const pointsCount = endOffset - beginOffset;
-    const axisXpixelStep = this.getAxisXpixelStep(pointsCount);
+    this.clearRect(this.viewPort);
+    this.drawGrid();
 
-    // find max value in Y arrays. We will use it for scaling
-    const maxYValue = this.findMaxValue(this.chartData.columns, beginOffset, endOffset)
-    // find cords for axis X
-    const axisXcords = this.getXcords(axisXpixelStep, pointsCount)
+    this.chart = this.getChartLines(beginOffset, endOffset);
 
-    this.drawHorizontalGrid(maxYValue);
-    //this.drawVerticalGrid(axisXcords);
-
-    const axisYscale = (this.viewRect.height - this.viewRect.y) / maxYValue;
-
-    // parse and transform input data to IChart
-    this.charts = this.transformDataToIChart(this.chartData, axisXcords, axisYscale, beginOffset, endOffset);
-
-    this.drawCharts(this.charts);
-
-    this.chartImage = this.ctx.getImageData(this.viewRect.x, this.viewRect.y, this.viewRect.width, this.viewRect.height)
+    this.chart.lines.forEach(line => {
+      this.drawLine(line.path, this.config.chartLineWidth, this.chartData.colors[line.id]);
+    });
   }
 
-  private drawOverlayAnimation(mouseX: number) {
-    if (!this.chartImage || !this.charts) return;
+  private drawGrid() {
+    this.ctx.save();
+    this.ctx.strokeStyle = this.config.themes[this.theme].gridLineColor;
+    this.ctx.fillStyle = this.config.themes[this.theme].legendFontColor;
+    this.ctx.lineWidth = this.config.gridLineWidth;
+    this.ctx.stroke(this.grid.path)
+    this.ctx.restore();
+  }
 
-    this.clearCtx(this.ctx);
-    this.ctx.putImageData(this.chartImage, this.viewRect.x, this.viewRect.y)
+  private mousemoveHandler(mouseX: number) {
+    if (!this.chart) return;
+    if ((Math.abs(this.lastDrawX - mouseX) < this.chart.stepX / 2)) return;
 
-    const firstChart = this.charts[0];
+    this.clearRect(this.viewPort);
+    this.drawGrid();
+
+    this.chart.lines.forEach(line => {
+      this.drawLine(line.path, this.config.chartLineWidth, this.chartData.colors[line.id]);
+    });
 
     //find closest
-    let closestPointIndex = 0;
-    for (let i = 0; i < firstChart.points.x.length; i++) {
-      if (Math.abs(firstChart.points.x[i] - mouseX) < Math.abs(firstChart.points.x[closestPointIndex] - mouseX)) {
-        closestPointIndex = i;
-      }
-    }
+    const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.chart.cordsX);
+    const closestX = this.chart.cordsX[closestIndex];
+    const closestOffsetIndex = this.chart.offset + closestIndex
 
     // draw support line
     this.ctx.save();
-    this.ctx.lineWidth = config.gridLineWidth;
-    this.ctx.strokeStyle = config.themes[this.theme].gridLineColor;
+    this.ctx.lineWidth = this.config.gridLineWidth;
+    this.ctx.strokeStyle = this.config.themes[this.theme].gridLineColor;
     this.ctx.beginPath()
-    this.ctx.moveTo(firstChart.points.x[closestPointIndex], this.viewRect.y)
-    this.ctx.lineTo(firstChart.points.x[closestPointIndex], this.viewRect.height);
+    this.ctx.moveTo(closestX, this.viewPort.y)
+    this.ctx.lineTo(closestX, this.viewPort.height);
     this.ctx.stroke()
     this.ctx.restore();
 
-    // draw cricles
-    this.charts.forEach(chart => {
+    // draw cricles and prepare values for text helper
+    const textBoxData: { color: string, value: string, name: string }[] = []
+    this.chartData.columns.forEach(column => {
+      const id = column[0];
+      if (this.isLineDisabled(id)) return;
+
+      // draw circle
       this.ctx.save();
-      this.ctx.lineWidth = config.chartLineWidth;
-      this.ctx.strokeStyle = chart.color;
-      this.ctx.fillStyle = config.themes[this.theme].backgroundColor;
-      this.ctx.moveTo(chart.points.x[closestPointIndex], chart.points.y[closestPointIndex])
+      this.ctx.lineWidth = this.config.chartLineWidth;
+      this.ctx.strokeStyle = this.chartData.colors[id];
+      this.ctx.fillStyle = this.config.themes[this.theme].backgroundColor;
+      const y = this.viewPort.height - column[closestOffsetIndex] * this.chart.scaleY;
+      this.ctx.moveTo(closestX, y)
       this.ctx.beginPath()
-      this.ctx.arc(chart.points.x[closestPointIndex], chart.points.y[closestPointIndex], config.chartPointRadius, 0, Math.PI * 2, true);
+      this.ctx.arc(closestX, y, this.config.chartPointRadius, 0, Math.PI * 2, true);
       this.ctx.fill()
       this.ctx.stroke()
       this.ctx.restore();
+
+      //prepare values for text helper
+      textBoxData.push({
+        color: this.chartData.colors[id],
+        name: this.chartData.names[id].toString(),
+        value: column[closestOffsetIndex].toString()
+      })
     })
 
-    // draw helper
-    const middle = Math.round((this.viewRect.width - this.viewRect.x) / 2)
-    const square = 30;
+    // calculate text helper size
+    const margin = 10;
 
+    let acc = 0;
+    const textOffsets = textBoxData.map(x => {
+      const valueWidth = this.ctx.measureText(x.value).width;
+      const nameWidth = this.ctx.measureText(x.name).width;
+
+      acc = acc + Math.max(valueWidth, nameWidth) + margin
+
+      return acc;
+    })
+
+    const box = new Rect(30, 30, textOffsets.reduce((acc, x) => acc += x) + margin, 30)
+
+    // draw box
     this.ctx.save();
-    this.ctx.strokeStyle = config.themes[this.theme].gridLineColor;
-    this.ctx.fillStyle = config.themes[this.theme].backgroundColor;
-    this.ctx.strokeRect(middle - square, this.viewRect.y + square, square * 2, square * 2)
-    this.ctx.fillRect(middle - square, this.viewRect.y + square, square * 2, square * 2)
+    this.ctx.strokeStyle = this.config.themes[this.theme].gridLineColor;
+    this.ctx.fillStyle = this.config.themes[this.theme].backgroundColor;
+    this.ctx.fillRect(box.x, box.y, box.width, box.height);
+    this.ctx.strokeRect(box.x, box.y, box.width, box.height);
     this.ctx.restore();
-    this.charts.forEach((chart, i) => {
+
+    // draw text
+    textBoxData.forEach((text, i) => {
       this.ctx.save();
-      this.ctx.fillStyle = chart.color;
-      this.ctx.fillText(`${chart.points.values[closestPointIndex]}`, middle - square + 20 * i + 10, this.viewRect.y + square * 2);
-      this.ctx.fillText(`${chart.name}`, middle - square + 20 * i + 10, this.viewRect.y + square * 2 + 20);
+      this.ctx.fillStyle = text.color;
+      this.ctx.fillText(text.value, box.x + textOffsets[i], box.y + 10);
+      this.ctx.fillText(text.name, box.x + textOffsets[i], box.y + 20);
       this.ctx.restore();
     })
+
+    this.lastDrawX = closestX;
   }
 }

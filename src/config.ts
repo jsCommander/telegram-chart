@@ -1,21 +1,4 @@
-export interface IConfig {
-  legendXfont: string;
-  legendYfont: string;
-  gridHorizontalLineCount: number;
-  gridLineWidth: number;
-  chartLineWidth: number,
-  chartPointRadius: number,
-  selectionMinPoints: number;
-  selectionOffsetX: number;
-  themes: {
-    [name: string]: {
-      gridLineColor: string;
-      legendFontColor: string;
-      helperLineColor: string;
-      backgroundColor: string;
-    }
-  }
-}
+import { IConfig } from "./interfaces";
 
 
 const config: IConfig = {
@@ -25,7 +8,7 @@ const config: IConfig = {
   gridLineWidth: 2,
   chartLineWidth: 3,
   chartPointRadius: 5,
-  selectionMinPoints: 10,
+  selectionMinPoints: 0.1,
   selectionOffsetX: 10,
   themes: {
     white: {

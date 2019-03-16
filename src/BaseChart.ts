@@ -1,22 +1,41 @@
-import { IRect, IChartData, IChart } from "./interfaces";
+import { Rect, InputData, IChart, IChartLine, IGrid, IConfig } from "./interfaces";
 import { config } from "./config"
 
-export abstract class BaseChart {
+export class BaseChart {
   protected ctx: CanvasRenderingContext2D;
-  protected viewRect: IRect;
-  protected theme: string = "white"
-  constructor(canvas: HTMLCanvasElement, view?: IRect) {
-    this.ctx = canvas.getContext("2d");
+  protected viewPort: Rect;
+  protected theme: string = "white";
+  protected disabledLines: string[] = ["x"];
+  protected config: IConfig;
 
-    this.viewRect = view ? view : {
-      x: 0,
-      y: 0,
-      width: canvas.width,
-      height: canvas.height
+  constructor(canvas: HTMLCanvasElement, protected chartData: InputData, userConfig?: any) {
+    this.config = Object.assign({}, config, userConfig) as IConfig;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Can't get canvas context 2d");
     }
+
+    this.ctx = ctx;
+    // set view port
+    this.viewPort = new Rect(0, 0, canvas.width, canvas.height);
   }
 
-  protected drawHorizontalGrid(maxYvalue: number) {
+  protected getGrid(viewPort?: Rect): IGrid {
+    const view = viewPort ? viewPort : this.viewPort;
+    const stepY = view.height / config.gridHorizontalLineCount;
+    const path = new Path2D();
+
+    // draw horizontal lines
+    for (let i = 0; i < config.gridHorizontalLineCount; i++) {
+      const height = view.height - (stepY * i)
+
+      path.moveTo(view.x, height);
+      path.lineTo(view.width, height);
+    }
+
+    return { path, stepY };
+    /*
     const axisYpixelStep = this.viewRect.height / config.gridHorizontalLineCount;
     const axisYvalueStep = Math.round(maxYvalue / config.gridHorizontalLineCount);
 
@@ -38,104 +57,121 @@ export abstract class BaseChart {
       this.ctx.fillText(value.toString(), this.viewRect.x, height - 5);
     }
     this.ctx.restore()
+    */
   }
 
-  protected drawVerticalGrid(axisXcords: number[]) {
+  protected getChartLines(beginOffset: number, endOffset: number, viewPort?: Rect): IChart {
+    const view = viewPort ? viewPort : this.viewPort;
+
+    // adjust offsets to be in range and ignore first element (name)
+    beginOffset = Math.max(1, beginOffset + 1);
+    endOffset = Math.min(this.chartData.columns[0].length - 1, endOffset + 1);
+    const pointCount = endOffset - beginOffset;
+    // find axis X pixel step between two chart points
+    const stepX = (view.width - view.x) / (pointCount - 1);
+    // find pixel scale for axis Y using max and min values
+    const { max, min } = this.findMaxMinValues(beginOffset, endOffset);
+    const scaleY = (view.height - view.y) / max;
+
+    const cordsX: number[] = []
+    for (let i = 0; i < pointCount; i++) {
+      cordsX.push(stepX * i);
+    }
+
+    const lines: IChartLine[] = [];
+    this.chartData.columns.forEach(column => {
+      const id = column[0];
+      // check if user switch to ignore this column
+      if (this.isLineDisabled(id)) return;
+      // prepare brush
+      const path = new Path2D;
+
+      path.moveTo(view.x, view.height - column[beginOffset] * scaleY);
+      for (let i = beginOffset, j = 0; i < endOffset; i++ , j++) {
+        path.lineTo(cordsX[j], view.height - column[i] * scaleY)
+      }
+      lines.push({ id, path })
+    });
+    return { cordsX, lines, scaleY, offset: beginOffset, stepX };
+  }
+
+  protected drawLine(line: Path2D, width?: number, color?: string) {
     this.ctx.save();
-    this.ctx.strokeStyle = config.themes[this.theme].gridLineColor;
-    this.ctx.fillStyle = config.themes[this.theme].gridLineColor;
-    this.ctx.lineWidth = config.gridLineWidth;
 
-    // draw vertical lines
-    axisXcords.forEach(x => {
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, this.viewRect.y);
-      this.ctx.lineTo(x, this.viewRect.height);
-      this.ctx.stroke();
-    })
+    if (width) this.ctx.lineWidth = width;
+    if (color) this.ctx.strokeStyle = color;
 
+    this.ctx.stroke(line);
+    this.ctx.restore();
+  }
+
+  protected isPointInRect(rect: Rect, x: number, y: number): boolean {
+    return (rect.x < x) && (x < rect.getEndX()) && (rect.y < y) && (y < rect.getEndY())
+  }
+
+  // class helpers
+  protected fillRect(rect: Rect): void {
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  }
+
+  protected strokeRect(rect: Rect): void {
+    this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  }
+
+  protected clearRect(rect: Rect): void {
+    this.ctx.save()
+    this.ctx.fillStyle = this.config.themes[this.theme].backgroundColor;
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     this.ctx.restore()
   }
 
-  protected getAxisXpixelStep(pointsCount: number): number {
-    return (this.viewRect.width - this.viewRect.x) / (pointsCount - 1);
+  protected isLineDisabled(id: string): boolean {
+    return this.disabledLines.indexOf(id) !== -1;
   }
 
-  protected transformDataToIChart(data: IChartData, axisXcords: number[], axisYscale: number, beginOffset: number, endOffset: number): IChart[] {
-    let charts: IChart[] = [];
-    data.columns.forEach(x => {
-      if (x[0] !== "x") {
-        const name = x[0];
-        const values = x.slice(beginOffset, endOffset);
-
-        charts.push({
-          name: data.names[name],
-          color: data.colors[name],
-          points: {
-            x: axisXcords,
-            y: values.map(x => this.viewRect.height - x * axisYscale),
-            values
-          }
-        })
+  protected findMaxMinValues(beginOffset: number, endOffset: number): { min: number, max: number } {
+    //find first line that we not ignore and setup initial max and min values
+    let max: number;
+    let min: number;
+    for (let i = 0; i < this.chartData.columns.length; i++) {
+      const id = this.chartData.columns[i][0];
+      // check if user switch to ignore this column
+      if (!this.isLineDisabled(id)) {
+        max = this.chartData.columns[i][1];
+        min = this.chartData.columns[i][1];
+        break;
       }
-    });
-    return charts;
-  }
+    }
 
-  protected drawCharts(charts: IChart[], drawValues = false) {
-    charts.forEach(chart => {
-      this.ctx.save();
-      this.ctx.lineWidth = config.chartLineWidth;
-      this.ctx.strokeStyle = chart.color;
-      this.ctx.fillStyle = chart.color;
-      this.ctx.beginPath();
-      this.ctx.moveTo(chart.points.x[0], chart.points.y[0]);
+    this.chartData.columns.forEach(column => {
+      const id = column[0];
+      // check if user switch to ignore this column
+      if (this.isLineDisabled(id)) return;
 
-      let lastValue = chart.points.y[0];
-
-      chart.points.y.forEach((y, i) => {
-        this.ctx.lineTo(chart.points.x[i], y)
-
-        if (drawValues) {
-          const offset = y > lastValue ? 10 : -10
-          this.ctx.fillText(chart.points.values[i].toString(), chart.points.x[i] + offset, y + offset);
-        }
-      })
-      this.ctx.stroke();
-      this.ctx.restore();
+      for (let i = beginOffset; i < endOffset; i++) {
+        if (column[i] > max) max = column[i];
+        if (column[i] < min) min = column[i];
+      }
     })
+
+    return { max, min }
   }
 
-  protected getXcords(axisXpixelStep: number, pointCount: number): number[] {
-    // find cords for axis X
-    let axisXcords: number[] = [];
-    for (let i = 0; i < pointCount; i++) {
-      axisXcords.push((i * axisXpixelStep) + this.viewRect.x)
+  // common helpers
+  protected findIndexOfClosestValueInSortedArray(value: number, array: number[]): number {
+
+    let closestIndex = 0;
+    // 
+    while (array[closestIndex] < value) {
+      if (closestIndex > array.length - 1) return -1;
+      closestIndex++
     }
-    return axisXcords;
-  }
 
-  protected findMaxValue(chartValuesArrays: any[][], beginOffset: number, endOffset: number): number {
-    let maxYValue = 0;
-    for (let i = beginOffset; i < endOffset; i++) {
-      chartValuesArrays.forEach(x => {
-        if (x[0] !== "x" && x[i] > maxYValue) {
-          maxYValue = x[i];
-        }
-      })
+    if (Math.abs(array[closestIndex - 1] - value) < Math.abs(array[closestIndex] - value)) {
+      closestIndex = closestIndex - 1
     }
-    return maxYValue;
+
+    return closestIndex;
   }
 
-  protected isPointInRect(rect: IRect, x: number, y: number, offsetX = 0, offsetY = 0): boolean {
-    return (rect.x - offsetX < x && x < rect.x + rect.width + offsetX) && (rect.y - offsetY < y && y < rect.y + rect.height + offsetY)
-  }
-
-  protected strokeRect(ctx: CanvasRenderingContext2D, rect: IRect) {
-    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-  }
-
-  protected clearCtx(ctx: CanvasRenderingContext2D) {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-  }
 }

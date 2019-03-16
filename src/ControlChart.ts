@@ -1,33 +1,32 @@
-import { IRect, IChartData, IChart } from "./interfaces";
+import { Rect, InputData, IChart, IConfig } from "./interfaces";
 import { BaseChart } from "./BaseChart";
-import { config } from "./config"
 
 type onChangeCallback = (beginOffset: number, endOffset: number) => void
 
 export class ControlChart extends BaseChart {
   private isDragBegin = false;
-  private charts?: IChart[];
-  private chartImage?: ImageData;
+  private chart?: IChart;
   private beginOffset = 50;
-  private selectionPoints = config.selectionMinPoints;
-  private endOffset = this.beginOffset + this.selectionPoints;
+  private selectionPoints: number;
+  private endOffset = 0;
   private selectionOffsetX = 0;
   private moveType?: "start" | "end" | "all";
   private callback?: onChangeCallback;
-  private selection?: IRect;
+  private selection?: Rect;
 
-  constructor(canvas: HTMLCanvasElement, private chartData: IChartData, view?: IRect) {
-    super(canvas, view);
+  constructor(canvas: HTMLCanvasElement, chartData: InputData, config?: IConfig) {
+    super(canvas, chartData, config);
+
     this.ctx.canvas.addEventListener("mousedown", e => {
       if (!this.selection) return;
 
-      if (this.isPointInRect(this.selection, e.offsetX, e.offsetY, config.selectionOffsetX)) {
+      if (this.selection.isPointInRect(e.offsetX, e.offsetY)) {
         this.isDragBegin = true;
         // clicked at start
-        if ((this.selection.x - config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.x + config.selectionOffsetX)) {
+        if ((this.selection.x - this.config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.x + this.config.selectionOffsetX)) {
           this.moveType = "start";
           //clicked at end
-        } else if ((this.selection.width + this.selection.x - config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.width + this.selection.x + config.selectionOffsetX)) {
+        } else if ((this.selection.width + this.selection.x - this.config.selectionOffsetX < e.offsetX) && (e.offsetX < this.selection.width + this.selection.x + this.config.selectionOffsetX)) {
           this.moveType = "end";
         } else {
           this.moveType = "all";
@@ -37,6 +36,7 @@ export class ControlChart extends BaseChart {
     })
     this.ctx.canvas.addEventListener("mouseup", e => {
       if (this.isDragBegin) {
+        this.drawOverlayAnimation(e.offsetX)
         this.isDragBegin = false;
       }
     })
@@ -45,111 +45,110 @@ export class ControlChart extends BaseChart {
         this.drawOverlayAnimation(e.offsetX)
       }
     })
+    this.ctx.canvas.addEventListener("mouseout", e => {
+      if (this.isDragBegin) {
+        this.isDragBegin = false;
+      }
+    })
   }
 
   public draw() {
-    this.clearCtx(this.ctx)
+    this.clearRect(this.viewPort)
     const pointsCount = this.chartData.columns[0].length;
-    console.log(pointsCount);
-    const axisXpixelStep = this.getAxisXpixelStep(pointsCount);
 
-    // find max value in Y arrays. We will use it for scaling
-    const maxYValue = this.findMaxValue(this.chartData.columns, 1, pointsCount)
+    this.chart = this.getChartLines(0, pointsCount);
 
-    // find cords for axis X
-    const axisXcords = this.getXcords(axisXpixelStep, pointsCount)
-    const axisYscale = (this.viewRect.height - this.viewRect.y) / maxYValue;
+    this.chart.lines.forEach(line => {
+      this.drawLine(line.path, this.config.chartLineWidth, this.chartData.colors[line.id]);
+    });
 
-    // parse and transform input data to IChart
-    this.charts = this.transformDataToIChart(this.chartData, axisXcords, axisYscale, 1, pointsCount);
+    this.endOffset = this.beginOffset + Math.round(pointsCount * this.config.selectionMinPoints);
+    this.selectionPoints = this.endOffset - this.beginOffset;
 
-    this.drawCharts(this.charts);
-    this.chartImage = this.ctx.getImageData(this.viewRect.x, this.viewRect.y, this.viewRect.width, this.viewRect.height)
+    const startX = this.chart.cordsX[this.beginOffset];
+    const endX = this.chart.cordsX[this.endOffset];
 
-    const startX = this.charts[0].points.x[this.beginOffset];
-    const endX = this.charts[0].points.x[this.endOffset];
+    this.selection = new Rect(startX, this.viewPort.y, endX - startX, this.viewPort.height)
 
-    this.selection = {
-      x: startX,
-      y: this.viewRect.y,
-      width: endX - startX,
-      height: this.viewRect.height
-    }
+    this.drawSelection(this.selection)
+  }
+
+  private drawSelection(selection: Rect) {
     this.ctx.save()
-    this.ctx.lineWidth = config.selectionOffsetX;
-    this.ctx.strokeStyle = "#ddeaf3aa";
-    this.ctx.fillStyle = "#f5f9fbaa";
-    this.ctx.fillRect(this.viewRect.x, this.viewRect.y, this.viewRect.x + this.selection.x, this.viewRect.height)
-    this.ctx.fillRect(this.selection.x + this.selection.width, this.viewRect.y, this.viewRect.width, this.viewRect.height)
 
-    this.strokeRect(this.ctx, this.selection)
-    if (this.callback) {
-      this.callback(this.beginOffset, this.endOffset);
-    }
+    this.ctx.fillStyle = "#f5f9fbaa";
+    this.ctx.fillRect(this.viewPort.x, this.viewPort.y, selection.x, this.viewPort.height)
+    this.ctx.fillRect(selection.getEndX(), this.viewPort.y, this.viewPort.width, this.viewPort.height)
+
+
+    this.ctx.strokeStyle = "#068dda44";
+    const edgeWidth = this.config.selectionOffsetX
+    this.ctx.lineWidth = Math.ceil(edgeWidth / 4);
+    this.ctx.beginPath();
+    // top line
+    this.ctx.moveTo(selection.x + edgeWidth, selection.y)
+    this.ctx.lineTo(selection.getEndX() - edgeWidth, selection.y)
+    // bottom line
+    this.ctx.moveTo(selection.x + edgeWidth, selection.height)
+    this.ctx.lineTo(selection.getEndX() - edgeWidth, selection.height)
+    this.ctx.stroke()
+
+    this.ctx.lineWidth = edgeWidth
+    // left line
+    this.ctx.beginPath();
+    this.ctx.moveTo(selection.x + edgeWidth / 2, selection.y)
+    this.ctx.lineTo(selection.x + edgeWidth / 2, selection.height)
+    // right line 
+    this.ctx.moveTo(selection.getEndX() - edgeWidth / 2, selection.y)
+    this.ctx.lineTo(selection.getEndX() - edgeWidth / 2, selection.height)
+
+    this.ctx.stroke()
     this.ctx.restore()
   }
+
   public setOnChangeCallback(callback: onChangeCallback) {
     this.callback = callback;
   }
 
   private drawOverlayAnimation(mouseX: number) {
-    if (!this.chartImage || !this.charts) return;
+    if (!this.chart || !this.selection) return;
 
-    this.clearCtx(this.ctx);
-    this.ctx.putImageData(this.chartImage, this.viewRect.x, this.viewRect.y)
-
-    const firstChart = this.charts[0];
+    this.clearRect(this.viewPort);
+    this.chart.lines.forEach(line => {
+      this.drawLine(line.path, this.config.chartLineWidth, this.chartData.colors[line.id]);
+    });
 
     if (this.moveType !== "end") {
       mouseX += this.selectionOffsetX;
-      mouseX = Math.min(mouseX, this.viewRect.width - this.selection.width)
+      mouseX = Math.min(mouseX, this.viewPort.width - this.selection.width)
     } else {
-      mouseX = Math.min(mouseX, this.viewRect.width)
+      mouseX = Math.min(mouseX, this.viewPort.width)
     }
 
-    mouseX = Math.max(mouseX, this.viewRect.x)
+    mouseX = Math.max(mouseX, this.viewPort.x)
 
-    //find closest
-    let closestPointIndex = 0;
-    for (let i = 0; i < firstChart.points.x.length; i++) {
-      if (Math.abs(firstChart.points.x[i] - mouseX) < Math.abs(firstChart.points.x[closestPointIndex] - mouseX)) {
-        closestPointIndex = i;
-      }
-    }
+    const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.chart.cordsX);
+    const closestX = this.chart.cordsX[closestIndex];
 
     if (this.moveType === "start") {
-      this.beginOffset = this.endOffset - closestPointIndex > config.selectionMinPoints ? closestPointIndex : this.endOffset - config.selectionMinPoints;
+      this.beginOffset = this.endOffset - closestIndex > closestX ? closestIndex : this.endOffset - closestX;
       this.selectionPoints = this.endOffset - this.beginOffset;
     } else if (this.moveType === "end") {
-      this.endOffset = closestPointIndex - this.beginOffset > config.selectionMinPoints ? closestPointIndex : this.beginOffset + config.selectionMinPoints;
+      this.endOffset = closestIndex - this.beginOffset > closestX ? closestIndex : this.beginOffset + closestX;
       this.selectionPoints = this.endOffset - this.beginOffset;
     } else {
-      this.beginOffset = closestPointIndex;
+      this.beginOffset = closestIndex;
       this.endOffset = this.beginOffset + this.selectionPoints;
     }
 
-    const startX = this.charts[0].points.x[this.beginOffset];
-    const endX = this.charts[0].points.x[this.endOffset];
+    const startX = this.chart.cordsX[this.beginOffset];
+    const endX = this.chart.cordsX[this.endOffset];
 
-    this.selection = {
-      x: startX,
-      y: this.viewRect.y,
-      width: endX - startX,
-      height: this.viewRect.height
-    }
+    this.selection = new Rect(startX, this.viewPort.y, endX - startX, this.viewPort.height)
+    this.drawSelection(this.selection)
 
-    // draw before selection 
-    this.ctx.save()
-    this.ctx.lineWidth = config.selectionOffsetX;
-    this.ctx.strokeStyle = "#ddeaf3aa";
-    this.ctx.fillStyle = "#f5f9fbaa";
-    this.ctx.fillRect(this.viewRect.x, this.viewRect.y, this.viewRect.x + this.selection.x, this.viewRect.height)
-    this.ctx.fillRect(this.selection.x + this.selection.width, this.viewRect.y, this.viewRect.width, this.viewRect.height)
-
-    this.strokeRect(this.ctx, this.selection)
     if (this.callback) {
       this.callback(this.beginOffset, this.endOffset);
     }
-    this.ctx.restore()
   }
 }

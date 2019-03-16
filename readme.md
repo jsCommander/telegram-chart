@@ -75,6 +75,8 @@ What didn't work:
 
 ## TODO list
 
+- draw chart function
+
 - moveable selection for control chart
 - change size of selection for control chart
 - make main chart helper box not cross with helper line
