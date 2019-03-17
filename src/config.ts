@@ -59,7 +59,7 @@ const config: IConfig = {
   // selection
   selectionMinPoints: 0.1,
   selectionDefaultPoints: 0.33,
-  selectionGrabWidth: 10,
+  selectionGrabWidth: 15,
   defaultTheme: "white",
 }
 

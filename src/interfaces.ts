@@ -5,7 +5,13 @@ export interface InputData {
   colors: { [id: string]: string };
 }
 
-export interface IChart { cordsX: number[], lines: IChartLine[], scaleY: number, offset: number, stepX: number }
-export interface IChartLine { id: string, path: Path2D }
-export interface IGrid { stepY: number, path: Path2D }
+export interface IChart {
+  cordsX: number[];
+  lines: { [id: string]: Path2D };
+  scaleY: number;
+  offset: number;
+  stepX: number;
+  maxValue: number;
+}
 
+export interface IGrid { stepY: number, path: Path2D }

@@ -1,28 +1,17 @@
 import { config, themes, IConfig, ITheme } from "./config"
+import { InputData, IChart, IGrid } from "./interfaces";
 import { Rect } from "./Rect"
 
-export interface InputData {
-  columns: any[][];
-  types: { [id: string]: "line" | "x" };
-  names: { [id: string]: string };
-  colors: { [id: string]: string };
+enum DRAGTYPE {
+  BEGIN,
+  END,
+  ALL
 }
-
-interface IChart {
-  cordsX: number[];
-  lines: IChartLine[];
-  scaleY: number;
-  offset: number;
-  stepX: number;
-  maxValue: number;
-}
-interface IChartLine { id: string, path: Path2D }
-interface IGrid { stepY: number, path: Path2D }
 
 export class Chart {
   // for calculation
   private config: IConfig;
-  private disabledLines: string[] = ["x"];
+  private disabledLines: { [id: string]: boolean } = { x: true };
   private totalPoints: number;
 
   // for drawing
@@ -52,7 +41,7 @@ export class Chart {
 
   // events
   private isDragInProgress = false;
-  private dragType: "begin" | "end" | "all";
+  private dragType: DRAGTYPE;
   private grabOffset;
   private lastSupportLineX = 0;
 
@@ -83,14 +72,13 @@ export class Chart {
 
     // calculate control chart
     this.totalPoints = this.chartData.columns[0].length;
-    this.controlChart = this.getChartLines(0, this.totalPoints, this.controlChartView);
+    this.controlChart = this.getChartLines(0, this.totalPoints + 1, this.controlChartView);
 
     // calculate default selection
     const selectionTotal = Math.round(this.totalPoints * this.config.selectionDefaultPoints);
     this.selectionMinPoints = Math.round(this.totalPoints * this.config.selectionMinPoints);
     this.beginOffset = selectionTotal;
     this.endOffset = this.beginOffset + selectionTotal;
-
 
     this.drawControlChart(this.controlChart)
 
@@ -99,12 +87,10 @@ export class Chart {
     this.mainChart = this.getChartLines(this.beginOffset, this.endOffset, this.mainChartView);
 
     // calculate helper box size
-
     const helperBoxWidth = this.ctx.measureText(this.controlChart.maxValue.toString()).width * (this.chartData.columns.length - 2)
     this.helperBox = new Rect(30, 30, helperBoxWidth, 30)
 
     this.drawMainChart(this.mainChart, this.grid)
-
 
     // set event handlers
     this.ctx.canvas.addEventListener("mousemove", e => this.mousemoveHandler(e.offsetX, e.offsetY));
@@ -117,12 +103,12 @@ export class Chart {
         this.isDragInProgress = true;
         // clicked at start
         if (this.beginRect.isPointInRect(e.offsetX, e.offsetY)) {
-          this.dragType = "begin";
+          this.dragType = DRAGTYPE.BEGIN;
           //clicked at end
         } else if (this.endRect.isPointInRect(e.offsetX, e.offsetY)) {
-          this.dragType = "end";
+          this.dragType = DRAGTYPE.END;
         } else {
-          this.dragType = "all";
+          this.dragType = DRAGTYPE.ALL;
         }
         this.grabOffset = this.selectionBox.x - e.offsetX;
       }
@@ -140,7 +126,6 @@ export class Chart {
   }
 
   // handle events
-
   private mousemoveHandler(mouseX: number, mouseY: number) {
     // no data - no events
     if (!this.mainChart || !this.controlChart) return;
@@ -150,9 +135,7 @@ export class Chart {
       this.clearRect(this.controlChartView);
       this.clearRect(this.mainChartView);
 
-
-
-      if (this.dragType !== "end") {
+      if (this.dragType !== DRAGTYPE.END) {
         mouseX += this.grabOffset;
         mouseX = Math.min(mouseX, this.controlChartView.width - this.selectionBox.width)
       } else {
@@ -163,10 +146,9 @@ export class Chart {
 
       const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.controlChart.cordsX);
 
-
-      if (this.dragType === "begin") {
+      if (this.dragType === DRAGTYPE.BEGIN) {
         this.beginOffset = this.endOffset - closestIndex > this.selectionMinPoints ? closestIndex : this.endOffset - this.selectionMinPoints;
-      } else if (this.dragType === "end") {
+      } else if (this.dragType === DRAGTYPE.END) {
         this.endOffset = closestIndex - this.beginOffset > this.selectionMinPoints ? closestIndex : this.beginOffset + this.selectionMinPoints;
       } else {
         const pointsCount = this.endOffset - this.beginOffset;
@@ -179,7 +161,7 @@ export class Chart {
 
       this.selectionBox = new Rect(startX, this.controlChartView.y, endX - startX, this.controlChartView.height)
       this.drawControlChart(this.controlChart);
-      this.mainChart = this.getChartLines(this.beginOffset, this.endOffset, this.mainChartView)
+      this.mainChart = this.getChartLines(this.beginOffset, this.endOffset + 1, this.mainChartView)
 
       this.drawMainChart(this.mainChart, this.grid)
 
@@ -198,23 +180,20 @@ export class Chart {
       const closestOffsetIndex = this.mainChart.offset + closestIndex;
 
       // draw support line
-      this.ctx.save();
       this.ctx.lineWidth = this.config.gridLineWidth;
       this.ctx.strokeStyle = this.theme.gridLineColor;
       this.ctx.beginPath()
       this.ctx.moveTo(closestX, this.mainChartView.y)
       this.ctx.lineTo(closestX, this.mainChartView.height);
       this.ctx.stroke()
-      this.ctx.restore();
 
       // draw cricles and prepare values for text helper
       const textBoxData: { color: string, value: string, name: string }[] = []
       this.chartData.columns.forEach(column => {
         const id = column[0];
-        if (this.isLineDisabled(id)) return;
+        if (this.disabledLines[id]) return;
 
         // draw circle
-        this.ctx.save();
         this.ctx.lineWidth = this.config.mainChartLineWidth;
         this.ctx.strokeStyle = this.chartData.colors[id];
         this.ctx.fillStyle = this.theme.backgroundColor;
@@ -224,7 +203,6 @@ export class Chart {
         this.ctx.arc(closestX, y, this.config.chartPointRadius, 0, Math.PI * 2, true);
         this.ctx.fill()
         this.ctx.stroke()
-        this.ctx.restore();
 
         //prepare values for text helper
         textBoxData.push({
@@ -235,20 +213,16 @@ export class Chart {
       })
 
       // draw box
-      this.ctx.save();
       this.ctx.strokeStyle = this.theme.gridLineColor;
       this.ctx.fillStyle = this.theme.backgroundColor;
       this.ctx.fillRect(this.helperBox.x, this.helperBox.y, this.helperBox.width, this.helperBox.height);
       this.ctx.strokeRect(this.helperBox.x, this.helperBox.y, this.helperBox.width, this.helperBox.height);
-      this.ctx.restore();
 
       // draw text
       textBoxData.forEach((text, i) => {
-        this.ctx.save();
         this.ctx.fillStyle = text.color;
         this.ctx.fillText(text.value, this.helperBox.x + 20 * i, this.helperBox.y + 10);
         this.ctx.fillText(text.name, this.helperBox.x + 20 * i, this.helperBox.y + 20);
-        this.ctx.restore();
       })
 
       this.lastSupportLineX = closestX;
@@ -261,16 +235,24 @@ export class Chart {
     this.clearRect(this.mainChartView);
     this.drawGrid(grid);
 
-    mainChart.lines.forEach(line => {
-      this.drawLine(line.path, this.config.mainChartLineWidth, this.chartData.colors[line.id]);
-    });
+    this.ctx.lineWidth = this.config.mainChartLineWidth
+
+    for (const id in mainChart.lines) {
+      if (mainChart.lines.hasOwnProperty(id)) {
+        this.ctx.strokeStyle = this.chartData.colors[id]
+        this.ctx.stroke(mainChart.lines[id]);
+      }
+    }
   }
 
   private drawControlChart(controlChart: IChart) {
     // draw control chart lines
-    controlChart.lines.forEach(line => {
-      this.drawLine(line.path, this.config.controlChartLineWidth, this.chartData.colors[line.id]);
-    });
+    for (const id in controlChart.lines) {
+      if (controlChart.lines.hasOwnProperty(id)) {
+        this.ctx.strokeStyle = this.chartData.colors[id]
+        this.ctx.stroke(controlChart.lines[id]);
+      }
+    }
     // calculate selection
     const startX = controlChart.cordsX[this.beginOffset];
     const endX = controlChart.cordsX[this.endOffset];
@@ -374,11 +356,11 @@ export class Chart {
       cordsX.push(stepX * i + view.x);
     }
 
-    const lines: IChartLine[] = [];
+    const lines: { [id: string]: Path2D } = {};
     this.chartData.columns.forEach(column => {
       const id = column[0];
       // check if user switch to ignore this column
-      if (this.isLineDisabled(id)) return;
+      if (this.disabledLines[id]) return;
       // prepare brush
       const path = new Path2D;
 
@@ -386,13 +368,9 @@ export class Chart {
       for (let i = beginOffset, j = 0; i < endOffset; i++ , j++) {
         path.lineTo(cordsX[j], view.getEndY() - column[i] * scaleY)
       }
-      lines.push({ id, path })
+      lines[id] = path
     });
     return { cordsX, lines, scaleY, offset: beginOffset, stepX, maxValue: max };
-  }
-
-  private isLineDisabled(id: string): boolean {
-    return this.disabledLines.indexOf(id) !== -1;
   }
 
   private findMaxMinValues(beginOffset: number, endOffset: number): { min: number, max: number } {
@@ -402,7 +380,7 @@ export class Chart {
     for (let i = 0; i < this.chartData.columns.length; i++) {
       const id = this.chartData.columns[i][0];
       // check if user switch to ignore this column
-      if (!this.isLineDisabled(id)) {
+      if (!this.disabledLines[id]) {
         max = this.chartData.columns[i][1];
         min = this.chartData.columns[i][1];
         break;
@@ -412,7 +390,7 @@ export class Chart {
     this.chartData.columns.forEach(column => {
       const id = column[0];
       // check if user switch to ignore this column
-      if (this.isLineDisabled(id)) return;
+      if (this.disabledLines[id]) return;
 
       for (let i = beginOffset; i < endOffset; i++) {
         if (column[i] > max) max = column[i];

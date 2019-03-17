@@ -1,9 +1,9 @@
 import { Chart } from "./Chart";
 import { InputData } from "./interfaces"
 
-document.createChart = (container: HTMLElement, data: InputData) => {
-  const chartCanvas = container.querySelector(".canvas.chart") as HTMLCanvasElement;
+const doc = document as any;
 
-  const chart = new Chart(chartCanvas, data);
+doc.createChart = (canvas: HTMLCanvasElement, data: InputData) => {
+  const chart = new Chart(canvas, data);
 }
 
