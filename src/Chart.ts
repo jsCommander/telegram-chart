@@ -23,7 +23,7 @@ export class Chart {
   private theme: ITheme;
 
   // saved charts
-  private mainChart?: IChart;
+  private mainChart: IChart;
   private controlChart: IChart;
 
   private grid: IGrid;
@@ -80,7 +80,7 @@ export class Chart {
     this.beginOffset = selectionTotal;
     this.endOffset = this.beginOffset + selectionTotal;
 
-    this.drawControlChart(this.controlChart)
+    this.drawControlChart()
 
     // calculate main chart
     this.grid = this.getGrid(this.mainChartView);
@@ -90,7 +90,7 @@ export class Chart {
     const helperBoxWidth = this.ctx.measureText(this.controlChart.maxValue.toString()).width * (this.chartData.columns.length - 2)
     this.helperBox = new Rect(30, 30, helperBoxWidth, 30)
 
-    this.drawMainChart(this.mainChart, this.grid)
+    this.drawMainChart()
 
     // set event handlers
     this.ctx.canvas.addEventListener("mousemove", e => this.mousemoveHandler(e.offsetX, e.offsetY));
@@ -132,18 +132,14 @@ export class Chart {
 
     // if still dragin selector or moving at control chart
     if (this.isDragInProgress) {
-      this.clearRect(this.controlChartView);
-      this.clearRect(this.mainChartView);
-
       if (this.dragType !== DRAGTYPE.END) {
         mouseX += this.grabOffset;
-        mouseX = Math.min(mouseX, this.controlChartView.width - this.selectionBox.width)
+        mouseX = Math.min(mouseX, this.controlChartView.getEndX() - this.selectionBox.width)
       } else {
-        mouseX = Math.min(mouseX, this.controlChartView.width)
+        mouseX = Math.min(mouseX, this.controlChartView.getEndX())
       }
 
       mouseX = Math.max(mouseX, this.controlChartView.x)
-
       const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.controlChart.cordsX);
 
       if (this.dragType === DRAGTYPE.BEGIN) {
@@ -156,23 +152,16 @@ export class Chart {
         this.endOffset = this.beginOffset + pointsCount;
       }
 
-      const startX = this.controlChart.cordsX[this.beginOffset];
-      const endX = this.controlChart.cordsX[this.endOffset];
+      this.drawControlChart();
 
-      this.selectionBox = new Rect(startX, this.controlChartView.y, endX - startX, this.controlChartView.height)
-      this.drawControlChart(this.controlChart);
       this.mainChart = this.getChartLines(this.beginOffset, this.endOffset + 1, this.mainChartView)
-
-      this.drawMainChart(this.mainChart, this.grid)
-
+      this.drawMainChart()
     } else if (this.mainChartView.isPointInRect(mouseX, mouseY)) {
       // moving at main chart
       // no drawing if we still near last drawing point
       if ((Math.abs(this.lastSupportLineX - mouseX) < this.mainChart.stepX / 2)) return;
-      // clear main chart
-      this.clearRect(this.mainChartView);
       // redraw chart
-      this.drawMainChart(this.mainChart, this.grid)
+      this.drawMainChart()
 
       //find closest point to mouse x 
       const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.mainChart.cordsX);
@@ -184,7 +173,7 @@ export class Chart {
       this.ctx.strokeStyle = this.theme.gridLineColor;
       this.ctx.beginPath()
       this.ctx.moveTo(closestX, this.mainChartView.y)
-      this.ctx.lineTo(closestX, this.mainChartView.height);
+      this.ctx.lineTo(closestX, this.mainChartView.getEndY());
       this.ctx.stroke()
 
       // draw cricles and prepare values for text helper
@@ -229,50 +218,53 @@ export class Chart {
     }
   }
 
-  // drawing
+  public recalculateAll() {
+    this.controlChart = this.getChartLines(0, this.totalPoints + 1, this.controlChartView);
+    this.mainChart = this.getChartLines(this.beginOffset, this.endOffset + 1, this.mainChartView);
+    this.drawControlChart();
+    this.drawMainChart();
+  }
 
-  public drawMainChart(mainChart: IChart, grid: IGrid) {
+  public drawMainChart() {
     this.clearRect(this.mainChartView);
-    this.drawGrid(grid);
+    this.drawGrid();
 
     this.ctx.lineWidth = this.config.mainChartLineWidth
 
-    for (const id in mainChart.lines) {
-      if (mainChart.lines.hasOwnProperty(id)) {
+    for (const id in this.mainChart.lines) {
+      if (this.mainChart.lines.hasOwnProperty(id)) {
         this.ctx.strokeStyle = this.chartData.colors[id]
-        this.ctx.stroke(mainChart.lines[id]);
+        this.ctx.stroke(this.mainChart.lines[id]);
       }
     }
   }
 
-  private drawControlChart(controlChart: IChart) {
+  private drawControlChart() {
+    this.clearRect(this.controlChartView);
     // draw control chart lines
-    for (const id in controlChart.lines) {
-      if (controlChart.lines.hasOwnProperty(id)) {
+    for (const id in this.controlChart.lines) {
+      if (this.controlChart.lines.hasOwnProperty(id)) {
         this.ctx.strokeStyle = this.chartData.colors[id]
-        this.ctx.stroke(controlChart.lines[id]);
+        this.ctx.stroke(this.controlChart.lines[id]);
       }
     }
     // calculate selection
-    const startX = controlChart.cordsX[this.beginOffset];
-    const endX = controlChart.cordsX[this.endOffset];
+    const startX = this.controlChart.cordsX[this.beginOffset];
+    const endX = this.controlChart.cordsX[this.endOffset];
 
     this.selectionBox = new Rect(startX, this.controlChartView.y, endX - startX, this.controlChartView.height)
 
     this.drawSelection(this.selectionBox)
   }
 
-  private drawGrid(grid: IGrid) {
-    this.ctx.save();
+  private drawGrid() {
     this.ctx.strokeStyle = this.theme.gridLineColor;
     this.ctx.fillStyle = this.theme.legendFontColor;
     this.ctx.lineWidth = this.config.gridLineWidth;
-    this.ctx.stroke(grid.path)
-    this.ctx.restore();
+    this.ctx.stroke(this.grid.path)
   }
 
   private drawSelection(selectionBox: Rect) {
-    this.ctx.save()
 
     // fill uselected
     this.ctx.fillStyle = this.theme.unselectedColor;
@@ -293,17 +285,6 @@ export class Chart {
     this.ctx.fillRect(this.beginRect.getEndX(), selectionBox.y, this.endRect.x - this.beginRect.getEndX(), lineWidth)
     // bottom line
     this.ctx.fillRect(this.beginRect.getEndX(), selectionBox.getEndY() - lineWidth, this.endRect.x - this.beginRect.getEndX(), lineWidth)
-    this.ctx.restore()
-  }
-
-  private drawLine(line: Path2D, width?: number, color?: string) {
-    this.ctx.save();
-
-    if (width) this.ctx.lineWidth = width;
-    if (color) this.ctx.strokeStyle = color;
-
-    this.ctx.stroke(line);
-    this.ctx.restore();
   }
 
   private fillRect(rect: Rect): void {
@@ -315,10 +296,21 @@ export class Chart {
   }
 
   private clearRect(rect: Rect): void {
-    this.ctx.save()
     this.ctx.fillStyle = this.theme.backgroundColor;
     this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-    this.ctx.restore()
+  }
+
+  public disableLine(id: string) {
+    this.disabledLines[id] = true;
+    this.recalculateAll()
+  }
+  public enableLine(id: string) {
+    this.disabledLines[id] = false;
+    this.recalculateAll()
+  }
+  public toggleLine(id: string) {
+    this.disabledLines[id] = !this.disabledLines[id];
+    this.recalculateAll()
   }
 
   // calculation
