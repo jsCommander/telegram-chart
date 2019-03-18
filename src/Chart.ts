@@ -124,8 +124,29 @@ export class Chart {
     this.drawMainChart()
 
     // set event handlers
-    this.ctx.canvas.addEventListener("mousemove", e => this.mousemoveHandler(e.offsetX, e.offsetY));
-    this.ctx.canvas.addEventListener("touchmove", e => this.mousemoveHandler(e.touches[0].clientX - this.ctx.canvas.offsetLeft, e.touches[0].clientY - this.ctx.canvas.offsetTop))
+    // set event handlers
+    this.ctx.canvas.addEventListener("mousemove", e => {
+      this.mousemoveHandler(e.offsetX, e.offsetY)
+    });
+    this.ctx.canvas.addEventListener("touchmove", e => {
+      const mouse = this.touchToMouse(e as TouchEvent);
+      this.mousemoveHandler(mouse.x, mouse.y)
+    })
+
+    this.ctx.canvas.addEventListener("mousedown", e => {
+      this.controlElement.mousedownHandler(e.offsetX, e.offsetY)
+    })
+
+    this.ctx.canvas.addEventListener("touchstart", e => {
+      e.preventDefault();
+      const mouse = this.touchToMouse(e as TouchEvent);
+      this.controlElement.mousedownHandler(mouse.x, mouse.y)
+    })
+
+    this.ctx.canvas.addEventListener("mouseup", this.mouseupHandler.bind(this))
+    this.ctx.canvas.addEventListener("mouseout", this.mouseupHandler.bind(this))
+    this.ctx.canvas.addEventListener("touchend", this.mouseupHandler.bind(this))
+    this.ctx.canvas.addEventListener("touchcancel", this.mouseupHandler.bind(this))
 
     this.ctx.canvas.addEventListener("mousedown", e => {
       if (!this.selectionBox) return;
@@ -154,6 +175,20 @@ export class Chart {
         this.isDragInProgress = false;
       }
     })
+  }
+
+  // handle events
+  private touchToMouse(e: TouchEvent) {
+    const rect = this.ctx.canvas.getBoundingClientRect();
+    const x = e.touches[0].clientX - rect.left;
+    const y = e.touches[0].clientY - rect.top;
+    return { x, y }
+  }
+
+  private mouseupHandler() {
+    if (this.isDragInProgress) {
+      this.isDragInProgress = false;
+    }
   }
 
   // handle events
