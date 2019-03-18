@@ -45,7 +45,7 @@ export class Chart {
   // events
   private isDragInProgress = false;
   private dragType: DRAGTYPE;
-  private grabOffset;
+  private grabOffset: number;
   private lastSupportLineX = 0;
 
   // legend X
@@ -124,7 +124,6 @@ export class Chart {
     this.drawMainChart()
 
     // set event handlers
-    // set event handlers
     this.ctx.canvas.addEventListener("mousemove", e => {
       this.mousemoveHandler(e.offsetX, e.offsetY)
     });
@@ -134,47 +133,19 @@ export class Chart {
     })
 
     this.ctx.canvas.addEventListener("mousedown", e => {
-      this.controlElement.mousedownHandler(e.offsetX, e.offsetY)
+      this.mousedownHandler(e.offsetX, e.offsetY)
     })
 
     this.ctx.canvas.addEventListener("touchstart", e => {
       e.preventDefault();
       const mouse = this.touchToMouse(e as TouchEvent);
-      this.controlElement.mousedownHandler(mouse.x, mouse.y)
+      this.mousedownHandler(mouse.x, mouse.y)
     })
 
     this.ctx.canvas.addEventListener("mouseup", this.mouseupHandler.bind(this))
     this.ctx.canvas.addEventListener("mouseout", this.mouseupHandler.bind(this))
     this.ctx.canvas.addEventListener("touchend", this.mouseupHandler.bind(this))
     this.ctx.canvas.addEventListener("touchcancel", this.mouseupHandler.bind(this))
-
-    this.ctx.canvas.addEventListener("mousedown", e => {
-      if (!this.selectionBox) return;
-
-      if (this.selectionBox.isPointInRect(e.offsetX, e.offsetY)) {
-        this.isDragInProgress = true;
-        // clicked at start
-        if (this.beginRect.isPointInRect(e.offsetX, e.offsetY)) {
-          this.dragType = DRAGTYPE.BEGIN;
-          //clicked at end
-        } else if (this.endRect.isPointInRect(e.offsetX, e.offsetY)) {
-          this.dragType = DRAGTYPE.END;
-        } else {
-          this.dragType = DRAGTYPE.ALL;
-        }
-        this.grabOffset = this.selectionBox.x - e.offsetX;
-      }
-    })
-    this.ctx.canvas.addEventListener("mouseup", e => {
-      if (this.isDragInProgress) {
-        this.isDragInProgress = false;
-      }
-    })
-    this.ctx.canvas.addEventListener("mouseout", e => {
-      if (this.isDragInProgress) {
-        this.isDragInProgress = false;
-      }
-    })
   }
 
   // handle events
@@ -191,7 +162,24 @@ export class Chart {
     }
   }
 
-  // handle events
+  private mousedownHandler(mouseX: number, mouseY: number) {
+    if (!this.selectionBox) return;
+
+    if (this.selectionBox.isPointInRect(mouseX, mouseY)) {
+      this.isDragInProgress = true;
+      // clicked at start
+      if (this.beginRect.isPointInRect(mouseX, mouseY)) {
+        this.dragType = DRAGTYPE.BEGIN;
+        //clicked at end
+      } else if (this.endRect.isPointInRect(mouseX, mouseY)) {
+        this.dragType = DRAGTYPE.END;
+      } else {
+        this.dragType = DRAGTYPE.ALL;
+      }
+      this.grabOffset = this.selectionBox.x - mouseX;
+    }
+  }
+
   private mousemoveHandler(mouseX: number, mouseY: number) {
     // no data - no events
     if (!this.mainChart || !this.controlChart) return;
@@ -251,16 +239,15 @@ export class Chart {
   public drawMainChart() {
     this.clearRect(this.mainChartView);
     this.drawGrid();
-    this.drawLegend()
 
     this.ctx.lineWidth = this.config.mainChartLineWidth
-
     for (const id in this.mainChart.lines) {
       if (this.mainChart.lines.hasOwnProperty(id)) {
         this.ctx.strokeStyle = this.chartData.colors[id]
         this.ctx.stroke(this.mainChart.lines[id]);
       }
     }
+    this.drawLegend()
   }
 
   private drawControlChart() {
@@ -384,6 +371,7 @@ export class Chart {
       const val = Math.round(valueStep * i)
       this.ctx.fillText(this.trimValue(val), this.mainChartView.x + 5, this.mainChartView.getEndY() - val * this.mainChart.scaleY - 5)
     }
+    this.ctx.fillStyle = this.theme.legendFontColor
     // draw X legend
     for (let i = 1; i < this.mainChart.cordsX.length; i = i + this.legendStep) {
       const val = this.timestamps[this.mainChart.offset + i];

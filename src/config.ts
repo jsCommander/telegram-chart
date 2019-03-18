@@ -27,7 +27,7 @@ export interface IThemes {
 }
 
 const config: IConfig = {
-  margin: 10,
+  margin: 0,
   // elements sizes in percent (0.15 = 15%)
   controlViewHeigth: 0.2,
   legendViewHeigth: 0.05,
