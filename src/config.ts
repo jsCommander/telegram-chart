@@ -3,10 +3,8 @@ export interface IConfig {
   controlViewHeigth: number;
   legendViewHeigth: number;
   helperBoxHeight: number;
-  helperBoxMaxWidth: number;
-  helperBoxHeaderFont: string;
-  helperBoxValueFont: string;
-  helperBoxNameFont: string;
+  helperBoxWidth: number;
+  helperBoxFont: string;
   gridLineCount: number;
   gridLineWidth: number;
   mainChartLineWidth: number,
@@ -15,8 +13,7 @@ export interface IConfig {
   selectionMinPoints: number;
   selectionDefaultPoints: number;
   selectionGrabWidth: number;
-  legendXfont: string;
-  legendYfont: string;
+  legendFont: string;
   defaultTheme: "white" | "dark";
 }
 
@@ -36,15 +33,12 @@ const config: IConfig = {
   legendViewHeigth: 0.05,
 
   // helper box size in percent (0.15 = 15%)
-  helperBoxHeight: 0.3,
-  helperBoxMaxWidth: 0.3,
+  helperBoxHeight: 0.25,
+  helperBoxWidth: 0.25,
   // helper box fonts
-  helperBoxHeaderFont: "12px serif",
-  helperBoxValueFont: "12px serif",
-  helperBoxNameFont: "12px serif",
-  // axis legend
-  legendXfont: "12px serif",
-  legendYfont: "12px serif",
+  helperBoxFont: "serif",
+  // axis legend font
+  legendFont: "serif",
 
   // grid 
   gridLineCount: 6,

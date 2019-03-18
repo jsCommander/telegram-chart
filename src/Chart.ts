@@ -38,12 +38,23 @@ export class Chart {
 
   // helper box
   private helperBox: Rect;
+  private helperBoxOffsetX: number;
+  private helperBoxFontSize: number;
+  private helperBoxFontOffset: number;
 
   // events
   private isDragInProgress = false;
   private dragType: DRAGTYPE;
   private grabOffset;
   private lastSupportLineX = 0;
+
+  // legend X
+  private timestamps: string[];
+  private legendStep: number = 1;
+  private legendOneItemWidth: number;
+  private legendFontOffsetX: number;
+  private legendFont: string;
+
 
   constructor(canvas: HTMLCanvasElement, private chartData: InputData, userConfig?: any) {
     this.config = Object.assign({}, config, userConfig) as IConfig;
@@ -54,6 +65,14 @@ export class Chart {
     }
     this.ctx = ctx;
     this.theme = themes[this.config.defaultTheme];
+
+    const dateOpt = { month: "short", day: "2-digit" }
+    this.chartData.columns.forEach(x => {
+      if (x[0] === "x") {
+        this.timestamps = x.slice(1).map(y => new Date(y).toLocaleDateString("en-US", dateOpt))
+      }
+    })
+
 
     // calculate element sizes
     const margin = this.config.margin;
@@ -66,9 +85,7 @@ export class Chart {
     this.legendView = new Rect(margin, this.controlChartView.y - legendViewHeight, width, legendViewHeight)
     this.mainChartView = new Rect(margin, margin, width, this.legendView.y - margin)
 
-    //this.strokeRect(this.mainChartView);
-    //this.strokeRect(this.controlChartView);
-    //this.strokeRect(this.legendView);
+
 
     // calculate control chart
     this.totalPoints = this.chartData.columns[0].length;
@@ -86,9 +103,23 @@ export class Chart {
     this.grid = this.getGrid(this.mainChartView);
     this.mainChart = this.getChartLines(this.beginOffset, this.endOffset, this.mainChartView);
 
+    // mesure width of one timestamp 
+    this.legendFontOffsetX = Math.ceil(this.legendView.height * 0.3);
+    this.legendFont = `${this.legendView.height - this.legendFontOffsetX}px ${this.config.legendFont}`;
+    this.legendOneItemWidth = this.ctx.measureText(this.timestamps[0]).width + this.legendFontOffsetX;
+
     // calculate helper box size
-    const helperBoxWidth = this.ctx.measureText(this.controlChart.maxValue.toString()).width * (this.chartData.columns.length - 2)
-    this.helperBox = new Rect(30, 30, helperBoxWidth, 30)
+    const helperBoxWidth = Math.round(this.mainChartView.width * this.config.helperBoxWidth)
+    const helperBoxHeight = Math.round(this.mainChartView.height * this.config.helperBoxHeight)
+    this.helperBoxOffsetX = Math.round(helperBoxWidth * 0.5);
+    const helperBoxOffsetY = Math.round(helperBoxHeight * 0.5);
+    this.helperBox = new Rect(this.helperBoxOffsetX, helperBoxOffsetY, helperBoxWidth, helperBoxHeight)
+    // calculate font size
+    this.helperBoxFontSize = Math.round(helperBoxHeight / 6);
+    this.helperBoxFontOffset = Math.round(this.helperBox.width / this.chartData.columns.length)
+
+    // calc legend step
+    this.legendStep = Math.ceil((this.legendOneItemWidth * 1.5) / this.mainChart.stepX)
 
     this.drawMainChart()
 
@@ -132,7 +163,7 @@ export class Chart {
 
     // if still dragin selector or moving at control chart
     if (this.isDragInProgress) {
-      if (this.dragType !== DRAGTYPE.END) {
+      if (this.dragType === DRAGTYPE.ALL) {
         mouseX += this.grabOffset;
         mouseX = Math.min(mouseX, this.controlChartView.getEndX() - this.selectionBox.width)
       } else {
@@ -155,6 +186,9 @@ export class Chart {
       this.drawControlChart();
 
       this.mainChart = this.getChartLines(this.beginOffset, this.endOffset + 1, this.mainChartView)
+      // calc legend step
+      this.legendStep = Math.ceil((this.legendOneItemWidth * 1.5) / this.mainChart.stepX)
+
       this.drawMainChart()
     } else if (this.mainChartView.isPointInRect(mouseX, mouseY)) {
       // moving at main chart
@@ -165,56 +199,10 @@ export class Chart {
 
       //find closest point to mouse x 
       const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.mainChart.cordsX);
-      const closestX = this.mainChart.cordsX[closestIndex];
-      const closestOffsetIndex = this.mainChart.offset + closestIndex;
 
-      // draw support line
-      this.ctx.lineWidth = this.config.gridLineWidth;
-      this.ctx.strokeStyle = this.theme.gridLineColor;
-      this.ctx.beginPath()
-      this.ctx.moveTo(closestX, this.mainChartView.y)
-      this.ctx.lineTo(closestX, this.mainChartView.getEndY());
-      this.ctx.stroke()
+      this.drawHelper(closestIndex)
 
-      // draw cricles and prepare values for text helper
-      const textBoxData: { color: string, value: string, name: string }[] = []
-      this.chartData.columns.forEach(column => {
-        const id = column[0];
-        if (this.disabledLines[id]) return;
-
-        // draw circle
-        this.ctx.lineWidth = this.config.mainChartLineWidth;
-        this.ctx.strokeStyle = this.chartData.colors[id];
-        this.ctx.fillStyle = this.theme.backgroundColor;
-        const y = this.mainChartView.getEndY() - column[closestOffsetIndex] * this.mainChart.scaleY;
-        this.ctx.moveTo(closestX, y)
-        this.ctx.beginPath()
-        this.ctx.arc(closestX, y, this.config.chartPointRadius, 0, Math.PI * 2, true);
-        this.ctx.fill()
-        this.ctx.stroke()
-
-        //prepare values for text helper
-        textBoxData.push({
-          color: this.chartData.colors[id],
-          name: this.chartData.names[id].toString(),
-          value: column[closestOffsetIndex].toString()
-        })
-      })
-
-      // draw box
-      this.ctx.strokeStyle = this.theme.gridLineColor;
-      this.ctx.fillStyle = this.theme.backgroundColor;
-      this.ctx.fillRect(this.helperBox.x, this.helperBox.y, this.helperBox.width, this.helperBox.height);
-      this.ctx.strokeRect(this.helperBox.x, this.helperBox.y, this.helperBox.width, this.helperBox.height);
-
-      // draw text
-      textBoxData.forEach((text, i) => {
-        this.ctx.fillStyle = text.color;
-        this.ctx.fillText(text.value, this.helperBox.x + 20 * i, this.helperBox.y + 10);
-        this.ctx.fillText(text.name, this.helperBox.x + 20 * i, this.helperBox.y + 20);
-      })
-
-      this.lastSupportLineX = closestX;
+      this.lastSupportLineX = this.mainChart.cordsX[closestIndex];
     }
   }
 
@@ -228,6 +216,7 @@ export class Chart {
   public drawMainChart() {
     this.clearRect(this.mainChartView);
     this.drawGrid();
+    this.drawLegend()
 
     this.ctx.lineWidth = this.config.mainChartLineWidth
 
@@ -242,6 +231,7 @@ export class Chart {
   private drawControlChart() {
     this.clearRect(this.controlChartView);
     // draw control chart lines
+    this.ctx.lineWidth = this.config.controlChartLineWidth;
     for (const id in this.controlChart.lines) {
       if (this.controlChart.lines.hasOwnProperty(id)) {
         this.ctx.strokeStyle = this.chartData.colors[id]
@@ -287,6 +277,85 @@ export class Chart {
     this.ctx.fillRect(this.beginRect.getEndX(), selectionBox.getEndY() - lineWidth, this.endRect.x - this.beginRect.getEndX(), lineWidth)
   }
 
+  private drawHelper(closestIndex: number) {
+    const closestX = this.mainChart.cordsX[closestIndex];
+    const closestOffsetIndex = this.mainChart.offset + closestIndex;
+
+    // draw support line
+    this.ctx.lineWidth = this.config.gridLineWidth;
+    this.ctx.strokeStyle = this.theme.gridLineColor;
+    this.ctx.beginPath()
+    this.ctx.moveTo(closestX, this.mainChartView.y)
+    this.ctx.lineTo(closestX, this.mainChartView.getEndY());
+    this.ctx.stroke()
+
+    // draw cricles and prepare values for text helper
+    const textBoxData: { color: string, value: string, name: string }[] = []
+    this.chartData.columns.forEach(column => {
+      const id = column[0];
+      if (this.disabledLines[id]) return;
+
+      // draw circle
+      this.ctx.lineWidth = this.config.mainChartLineWidth;
+      this.ctx.strokeStyle = this.chartData.colors[id];
+      this.ctx.fillStyle = this.theme.backgroundColor;
+      const y = this.mainChartView.getEndY() - column[closestOffsetIndex] * this.mainChart.scaleY;
+      this.ctx.moveTo(closestX, y)
+      this.ctx.beginPath()
+      this.ctx.arc(closestX, y, this.config.chartPointRadius, 0, Math.PI * 2, true);
+      this.ctx.fill()
+      this.ctx.stroke()
+
+      //prepare values for text helper
+      textBoxData.push({
+        color: this.chartData.colors[id],
+        name: this.chartData.names[id].toString(),
+        value: this.trimValue(column[closestOffsetIndex])
+      })
+    })
+
+    // draw box
+    this.ctx.strokeStyle = this.theme.gridLineColor;
+    this.ctx.fillStyle = this.theme.backgroundColor;
+    this.fillRect(this.helperBox)
+    this.strokeRect(this.helperBox)
+
+    this.ctx.font = `${this.helperBoxFontSize}px ${this.config.helperBoxFont}`
+    this.ctx.fillStyle = "black";
+    const timestamp = this.timestamps[closestIndex + this.mainChart.offset]
+    this.ctx.fillText(timestamp, this.helperBox.x + this.helperBoxFontOffset, this.helperBox.y + this.helperBoxFontSize)
+
+    this.ctx.textAlign = "left"
+    // draw text
+    textBoxData.forEach((text, i) => {
+      i++
+      this.ctx.fillStyle = text.color;
+      this.ctx.fillText(text.value, this.helperBox.x + this.helperBoxFontOffset * i, this.helperBox.y + Math.round(this.helperBoxFontSize * 3))
+      this.ctx.fillText(text.name, this.helperBox.x + this.helperBoxFontOffset * i, this.helperBox.y + Math.round(this.helperBoxFontSize * 5));
+    })
+    this.ctx.textAlign = "start"
+  }
+
+  private drawLegend() {
+    this.clearRect(this.legendView)
+    //this.strokeRect(this.legendView)
+
+    const valueStep = this.mainChart.max / this.config.gridLineCount;
+    this.ctx.fillStyle = this.theme.legendFontColor;
+    this.ctx.font = this.legendFont;
+    let fontSize = parseInt(this.ctx.font.slice(0, 2))
+    // draw Y legend
+    for (let i = 0; i < this.config.gridLineCount; i++) {
+      const val = Math.round(valueStep * i)
+      this.ctx.fillText(this.trimValue(val), this.mainChartView.x + 5, this.mainChartView.getEndY() - val * this.mainChart.scaleY - 5)
+    }
+    // draw X legend
+    for (let i = 1; i < this.mainChart.cordsX.length; i = i + this.legendStep) {
+      const val = this.timestamps[this.mainChart.offset + i];
+      this.ctx.fillText(val, this.mainChart.cordsX[i], this.legendView.getEndY() - this.legendFontOffsetX)
+    }
+  }
+
   private fillRect(rect: Rect): void {
     this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
   }
@@ -324,13 +393,13 @@ export class Chart {
       const height = view.getEndY() - (stepY * i)
 
       path.moveTo(view.x, height);
-      path.lineTo(view.width, height);
+      path.lineTo(view.getEndX(), height);
     }
 
     return { path, stepY };
   }
 
-  private getChartLines(beginOffset: number, endOffset: number, view: Rect): IChart {
+  private getChartLines(beginOffset: number, endOffset: number, view: Rect, scaleFromZero = true): IChart {
     // adjust offsets to be in range and ignore first element (name)
     beginOffset = Math.max(1, beginOffset + 1);
     endOffset = Math.min(this.chartData.columns[0].length - 1, endOffset + 1);
@@ -362,7 +431,7 @@ export class Chart {
       }
       lines[id] = path
     });
-    return { cordsX, lines, scaleY, offset: beginOffset, stepX, maxValue: max };
+    return { cordsX, lines, scaleY, offset: beginOffset, stepX, max, min };
   }
 
   private findMaxMinValues(beginOffset: number, endOffset: number): { min: number, max: number } {
@@ -391,6 +460,18 @@ export class Chart {
     })
 
     return { max, min }
+  }
+
+  private trimValue(value: number): string {
+    if (value < 1000) {
+      return value.toString()
+    } else if (value < 1000000) {
+      return (value / 1000).toFixed(2).toString() + "k"
+    } else if (value < 1000000000) {
+      return (value / 1000000).toFixed(2).toString() + "m"
+    } else {
+      return (value / 1000000000).toFixed(2).toString() + "b"
+    }
   }
 
   private findIndexOfClosestValueInSortedArray(value: number, array: number[]): number {

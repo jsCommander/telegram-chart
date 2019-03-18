@@ -11,7 +11,8 @@ export interface IChart {
   scaleY: number;
   offset: number;
   stepX: number;
-  maxValue: number;
+  max: number;
+  min: number;
 }
 
 export interface IGrid { stepY: number, path: Path2D }
