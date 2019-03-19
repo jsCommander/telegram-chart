@@ -93,7 +93,6 @@ Canvas painting optimization
 Javascript optimization
 - Don't create new heavy object or arrays to avoid garbage collection
 
-
 What didn't work:
 
 - Overlaing canvas. Clone canvas element and make it overlaing first canvas to simulate layers. Don't see big perfomance improve. Also this restrict display style to absolute/relative. Decide to use image composing instead.
@@ -105,7 +104,6 @@ What didn't work:
 - add selection box clicked animation
 - add grid rescale animation
 - make main chart helper box to not cross with helper line
-
 
 done:
 
@@ -119,4 +117,3 @@ done:
 - horizontal grid for main chart
 - mousemove helper line for main chart
 - chart points on helper line for main chart
-
