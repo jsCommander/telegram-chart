@@ -2,31 +2,38 @@ import { config, themes, IConfig, ITheme } from "./config"
 import { InputData, IChart, IGrid } from "./interfaces";
 import { Rect } from "./Rect"
 
-enum DRAGTYPE {
+// types of manipulation with selection box
+enum DragType {
   BEGIN,
   END,
-  ALL
+  ALL,
+  NONE
+}
+
+enum HelperBoxLocation {
+  LEFT,
+  RIGHT
 }
 
 export class Chart {
-  // for calculation
-  private config: IConfig;
-  private disabledLines: { [id: string]: boolean } = { x: true };
-  private totalPoints: number;
-
-  // for drawing
+  // FOR DRAWINGS
   private ctx: CanvasRenderingContext2D;
   // view ports
   private mainChartView: Rect;
   private controlChartView: Rect;
   private legendView: Rect;
   private theme: ITheme;
+  private themeName: string;
 
   // saved charts
   private mainChart: IChart;
   private controlChart: IChart;
-
   private grid: IGrid;
+
+  // FOR CALCULATIONS
+  private config: IConfig;
+  private disabledLines: { [id: string]: boolean } = { x: true };
+  private totalPoints: number;
 
   // selection box
   private selectionBox: Rect;
@@ -37,19 +44,20 @@ export class Chart {
   private selectionMinPoints: number;
 
   // helper box
+  private helperBoxLocation = HelperBoxLocation.LEFT;
   private helperBox: Rect;
   private helperBoxOffsetX: number;
   private helperBoxFontSize: number;
-  private helperBoxFontOffset: number;
+  private helperBoxFontWidth: number;
 
   // events
   private isDragInProgress = false;
-  private dragType: DRAGTYPE;
-  private grabOffset: number;
+  private dragType: DragType = DragType.NONE;
+  private grabOffset: number = 0;
   private lastSupportLineX = 0;
 
   // legend X
-  private timestamps: string[];
+  private timestamps: string[] = [];
   private legendStep: number = 1;
   private legendOneItemWidth: number;
   private legendFontOffsetX: number;
@@ -57,22 +65,28 @@ export class Chart {
 
 
   constructor(canvas: HTMLCanvasElement, private chartData: InputData, userConfig?: any) {
+    // merge user options with default config
     this.config = Object.assign({}, config, userConfig) as IConfig;
+
+    //canvas.width = window.innerWidth
+    //canvas.height = window.innerHeight
 
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       throw new Error("Can't get canvas context 2d");
     }
     this.ctx = ctx;
+    this.themeName = this.config.defaultTheme;
     this.theme = themes[this.config.defaultTheme];
 
+    // transform timestamps to data strings
     const dateOpt = { month: "short", day: "2-digit" }
     this.chartData.columns.forEach(x => {
       if (x[0] === "x") {
+        // first element is name so slice it
         this.timestamps = x.slice(1).map(y => new Date(y).toLocaleDateString("en-US", dateOpt))
       }
     })
-
 
     // calculate element sizes
     const margin = this.config.margin;
@@ -84,8 +98,6 @@ export class Chart {
     const legendViewHeight = Math.round(height * this.config.legendViewHeigth)
     this.legendView = new Rect(margin, this.controlChartView.y - legendViewHeight, width, legendViewHeight)
     this.mainChartView = new Rect(margin, margin, width, this.legendView.y - margin)
-
-
 
     // calculate control chart
     this.totalPoints = this.chartData.columns[0].length;
@@ -105,21 +117,33 @@ export class Chart {
 
     // mesure width of one timestamp 
     this.legendFontOffsetX = Math.ceil(this.legendView.height * 0.3);
-    this.legendFont = `${this.legendView.height - this.legendFontOffsetX}px ${this.config.legendFont}`;
+    const legendFontSize = Math.min(this.legendView.height - this.legendFontOffsetX, 16)
+    this.legendFont = `${legendFontSize}px ${this.config.legendFont}`;
     this.legendOneItemWidth = this.ctx.measureText(this.timestamps[0]).width + this.legendFontOffsetX;
 
     // calculate helper box size
-    const helperBoxWidth = Math.round(this.mainChartView.width * this.config.helperBoxWidth)
-    const helperBoxHeight = Math.round(this.mainChartView.height * this.config.helperBoxHeight)
-    this.helperBoxOffsetX = Math.round(helperBoxWidth * 0.5);
+    // mesure width of longest helper text
+    this.helperBoxFontSize = legendFontSize;
+    this.ctx.font = `${legendFontSize}px ${this.config.helperBoxFont}`
+    this.helperBoxFontWidth = this.chartData.columns.reduce((acc, column) => {
+      const name = column[0];
+      if (name !== "x") {
+        const text = this.chartData.names[name].slice(0, 3) + this.trimValue(this.controlChart.max)
+        return Math.max(acc, this.ctx.measureText(text).width);
+      } else {
+        return acc;
+      }
+    }, 0)
+    // make halper box to be able to fit all text
+    const helperBoxWidth = this.helperBoxFontWidth * 1.3;
+    const helperBoxHeight = legendFontSize * this.chartData.columns.length * 1.2;
+
+    this.helperBoxOffsetX = Math.round(this.ctx.measureText(this.trimValue(this.controlChart.max)).width * 1.5)
     const helperBoxOffsetY = Math.round(helperBoxHeight * 0.5);
     this.helperBox = new Rect(this.helperBoxOffsetX, helperBoxOffsetY, helperBoxWidth, helperBoxHeight)
-    // calculate font size
-    this.helperBoxFontSize = Math.round(helperBoxHeight / 6);
-    this.helperBoxFontOffset = Math.round(this.helperBox.width / this.chartData.columns.length)
 
     // calc legend step
-    this.legendStep = Math.ceil((this.legendOneItemWidth * 1.5) / this.mainChart.stepX)
+    this.legendStep = Math.ceil((this.legendOneItemWidth * 2) / this.mainChart.stepX)
 
     this.drawMainChart()
 
@@ -169,12 +193,12 @@ export class Chart {
       this.isDragInProgress = true;
       // clicked at start
       if (this.beginRect.isPointInRect(mouseX, mouseY)) {
-        this.dragType = DRAGTYPE.BEGIN;
+        this.dragType = DragType.BEGIN;
         //clicked at end
       } else if (this.endRect.isPointInRect(mouseX, mouseY)) {
-        this.dragType = DRAGTYPE.END;
+        this.dragType = DragType.END;
       } else {
-        this.dragType = DRAGTYPE.ALL;
+        this.dragType = DragType.ALL;
       }
       this.grabOffset = this.selectionBox.x - mouseX;
     }
@@ -186,7 +210,7 @@ export class Chart {
 
     // if still dragin selector or moving at control chart
     if (this.isDragInProgress) {
-      if (this.dragType === DRAGTYPE.ALL) {
+      if (this.dragType === DragType.ALL) {
         mouseX += this.grabOffset;
         mouseX = Math.min(mouseX, this.controlChartView.getEndX() - this.selectionBox.width)
       } else {
@@ -196,9 +220,9 @@ export class Chart {
       mouseX = Math.max(mouseX, this.controlChartView.x)
       const closestIndex = this.findIndexOfClosestValueInSortedArray(mouseX, this.controlChart.cordsX);
 
-      if (this.dragType === DRAGTYPE.BEGIN) {
+      if (this.dragType === DragType.BEGIN) {
         this.beginOffset = this.endOffset - closestIndex > this.selectionMinPoints ? closestIndex : this.endOffset - this.selectionMinPoints;
-      } else if (this.dragType === DRAGTYPE.END) {
+      } else if (this.dragType === DragType.END) {
         this.endOffset = closestIndex - this.beginOffset > this.selectionMinPoints ? closestIndex : this.beginOffset + this.selectionMinPoints;
       } else {
         const pointsCount = this.endOffset - this.beginOffset;
@@ -336,26 +360,37 @@ export class Chart {
       })
     })
 
+    // helperBox must not cross with helper line
+    if (this.helperBoxLocation === HelperBoxLocation.LEFT) {
+      if (this.helperBox.getEndX() > closestX) {
+        this.helperBoxLocation = HelperBoxLocation.RIGHT;
+        this.helperBox.x = this.mainChartView.getEndX() - this.helperBoxOffsetX - this.helperBox.width;
+      }
+    } else {
+      if (this.helperBox.x < closestX) {
+        this.helperBoxLocation = HelperBoxLocation.LEFT;
+        this.helperBox.x = this.mainChartView.x + this.helperBoxOffsetX;
+      }
+    }
+
     // draw box
     this.ctx.strokeStyle = this.theme.gridLineColor;
     this.ctx.fillStyle = this.theme.backgroundColor;
     this.fillRect(this.helperBox)
     this.strokeRect(this.helperBox)
 
-    this.ctx.font = `${this.helperBoxFontSize}px ${this.config.helperBoxFont}`
-    this.ctx.fillStyle = "black";
-    const timestamp = this.timestamps[closestIndex + this.mainChart.offset]
-    this.ctx.fillText(timestamp, this.helperBox.x + this.helperBoxFontOffset, this.helperBox.y + this.helperBoxFontSize)
+    const offset = Math.round(this.helperBox.width * 0.1)
 
-    this.ctx.textAlign = "left"
-    // draw text
+    this.ctx.font = this.legendFont;
+    this.ctx.fillStyle = "black";
+    const timestamp = this.timestamps[closestIndex + this.mainChart.offset - 1]
+    this.ctx.fillText(timestamp, this.helperBox.x + offset, this.helperBox.y + this.helperBoxFontSize)
+    const textStartY = this.helperBox.y + this.helperBoxFontSize * 2
+
     textBoxData.forEach((text, i) => {
-      i++
       this.ctx.fillStyle = text.color;
-      this.ctx.fillText(text.value, this.helperBox.x + this.helperBoxFontOffset * i, this.helperBox.y + Math.round(this.helperBoxFontSize * 3))
-      this.ctx.fillText(text.name, this.helperBox.x + this.helperBoxFontOffset * i, this.helperBox.y + Math.round(this.helperBoxFontSize * 5));
+      this.ctx.fillText(`${text.name.slice(0, 4)}:${text.value}`, this.helperBox.x + offset, textStartY + (this.helperBoxFontSize + 2) * i)
     })
-    this.ctx.textAlign = "start"
   }
 
   private drawLegend() {
@@ -374,7 +409,7 @@ export class Chart {
     this.ctx.fillStyle = this.theme.legendFontColor
     // draw X legend
     for (let i = 1; i < this.mainChart.cordsX.length; i = i + this.legendStep) {
-      const val = this.timestamps[this.mainChart.offset + i];
+      const val = this.timestamps[this.mainChart.offset + i - 1];
       this.ctx.fillText(val, this.mainChart.cordsX[i], this.legendView.getEndY() - this.legendFontOffsetX)
     }
   }
@@ -406,7 +441,6 @@ export class Chart {
   }
 
   // calculation
-
   private getGrid(view: Rect): IGrid {
     const stepY = view.height / this.config.gridLineCount;
     const path = new Path2D();
@@ -422,7 +456,7 @@ export class Chart {
     return { path, stepY };
   }
 
-  private getChartLines(beginOffset: number, endOffset: number, view: Rect, scaleFromZero = true): IChart {
+  private getChartLines(beginOffset: number, endOffset: number, view: Rect): IChart {
     // adjust offsets to be in range and ignore first element (name)
     beginOffset = Math.max(1, beginOffset + 1);
     endOffset = Math.min(this.chartData.columns[0].length - 1, endOffset + 1);
@@ -488,12 +522,12 @@ export class Chart {
   private trimValue(value: number): string {
     if (value < 1000) {
       return value.toString()
-    } else if (value < 1000000) {
+    } else if (value < 100000) {
       return (value / 1000).toFixed(2).toString() + "k"
-    } else if (value < 1000000000) {
+    } else if (value < 100000000) {
       return (value / 1000000).toFixed(2).toString() + "m"
     } else {
-      return (value / 1000000000).toFixed(2).toString() + "b"
+      return (value / 100000000).toFixed(2).toString() + "b"
     }
   }
 

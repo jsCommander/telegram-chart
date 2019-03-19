@@ -45,10 +45,10 @@ const config: IConfig = {
 
   // line sizing
   gridLineWidth: 2,
-  mainChartLineWidth: 3,
-  controlChartLineWidth: 2,
+  mainChartLineWidth: 2,
+  controlChartLineWidth: 1,
   // helper line points
-  chartPointRadius: 5,
+  chartPointRadius: 3,
 
   // selection
   selectionMinPoints: 0.1,
