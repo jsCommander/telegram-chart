@@ -34,21 +34,11 @@ IChartData {
 
 ## Install
 
-If you are using webpack than get package from npm
-
-```
-npm install telegram-chart --save
-```
-
-or just download minified script
-
 ## Using example
 
 Initilize chart
 
 ```javascript
-const Chart = require("telegram-chart")
-
 const canvas = document.getElementById("chart1");
 const chart = new Chart(canvas, data, config);
 ```
@@ -60,15 +50,6 @@ chart.setData(data2)
 chart.disableLine("someline")
 chart.enableLine("someline")
 chart.toggleLine("someline")
-
-// themes
-chart1.useTheme("dark");
-
-// calback
-chart1.setOnSelectionChange( (begin, end)=> {console.log(`User select ${end-begin} points!`)})
-chart1.setOnHelperChange( (legendX, values)=> {
-  console.log(`User cursor on ${legendX}. Chart values: ${values.map(x => `${x.name}:${x.value} ` )}`)
-  })
 ```
 
 ## How it works
