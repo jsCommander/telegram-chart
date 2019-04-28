@@ -1,0 +1,44 @@
+@media (min-width:320px)  {
+  .main-container{
+    width: 100%;
+  }
+}
+@media (min-width:641px)  {
+  .main-container{
+    width: 47%;
+  }
+}
+@media (min-width:961px)  {
+  .main-container{
+    width: 47%;
+  }
+}
+.main-container{
+  margin: 5px;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-container{
+  width: 100%;
+  height: 300px;
+}
+
+.link{
+  text-align: center
+}
+
+.control{
+  display: flex;
+}
+.main{
+  margin: auto;
+  max-width: 1000px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content:center;
+}
+.clone{
+  visibility: collapse;
+}
+
