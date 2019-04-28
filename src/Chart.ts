@@ -64,12 +64,83 @@ export class Chart {
   private legendFont: string;
 
 
-  constructor(canvas: HTMLCanvasElement, private chartData: InputData, userConfig?: any) {
+  constructor(private container: HTMLElement, private chartData: InputData, userConfig?: any) {
     // merge user options with default config
     this.config = Object.assign({}, config, userConfig) as IConfig;
 
-    //canvas.width = window.innerWidth
-    //canvas.height = window.innerHeight
+    // create canvas and add it to container
+    const bound = container.getBoundingClientRect();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = bound.width;
+    canvas.height = bound.height;
+    container.appendChild(canvas);
+
+    window.addEventListener("resize", e => {
+      const bound = container.getBoundingClientRect();
+      canvas.width = bound.width;
+      canvas.height = bound.height;
+
+      // calculate element sizes
+      const margin = this.config.margin;
+      const width = this.ctx.canvas.width - margin * 2;
+      const height = this.ctx.canvas.height - margin * 2;
+
+      const controlViewHeight = Math.round(height * this.config.controlViewHeigth);
+      this.controlChartView = new Rect(margin, height - controlViewHeight + margin, width, controlViewHeight)
+      const legendViewHeight = Math.round(height * this.config.legendViewHeigth)
+      this.legendView = new Rect(margin, this.controlChartView.y - legendViewHeight, width, legendViewHeight)
+      this.mainChartView = new Rect(margin, margin, width, this.legendView.y - margin)
+
+      // calculate control chart
+      this.totalPoints = this.chartData.columns[0].length;
+      this.controlChart = this.getChartLines(0, this.totalPoints + 1, this.controlChartView);
+
+      // calculate default selection
+      const selectionTotal = Math.round(this.totalPoints * this.config.selectionDefaultPoints);
+      this.selectionMinPoints = Math.round(this.totalPoints * this.config.selectionMinPoints);
+      this.beginOffset = selectionTotal;
+      this.endOffset = this.beginOffset + selectionTotal;
+
+      this.drawControlChart()
+
+      // calculate main chart
+      this.grid = this.getGrid(this.mainChartView);
+      this.mainChart = this.getChartLines(this.beginOffset, this.endOffset, this.mainChartView);
+
+      // mesure width of one timestamp 
+      this.legendFontOffsetX = Math.ceil(this.legendView.height * 0.3);
+      const legendFontSize = Math.min(this.legendView.height - this.legendFontOffsetX, 16)
+      this.legendFont = `${legendFontSize}px ${this.config.legendFont}`;
+      this.legendOneItemWidth = this.ctx.measureText(this.timestamps[0]).width + this.legendFontOffsetX;
+
+      // calculate helper box size
+      // mesure width of longest helper text
+      this.helperBoxFontSize = legendFontSize;
+      this.ctx.font = `${legendFontSize}px ${this.config.helperBoxFont}`
+      this.helperBoxFontWidth = this.chartData.columns.reduce((acc, column) => {
+        const name = column[0];
+        if (name !== "x") {
+          const text = this.chartData.names[name].slice(0, 3) + this.trimValue(this.controlChart.max)
+          return Math.max(acc, this.ctx.measureText(text).width);
+        } else {
+          return acc;
+        }
+      }, 0)
+      // make halper box to be able to fit all text
+      const helperBoxWidth = this.helperBoxFontWidth * 1.3;
+      const helperBoxHeight = legendFontSize * this.chartData.columns.length * 1.2;
+
+      this.helperBoxOffsetX = Math.round(this.ctx.measureText(this.trimValue(this.controlChart.max)).width * 1.5)
+      const helperBoxOffsetY = Math.round(helperBoxHeight * 0.5);
+      this.helperBox = new Rect(this.helperBoxOffsetX, helperBoxOffsetY, helperBoxWidth, helperBoxHeight)
+
+      // calc legend step
+      this.legendStep = Math.ceil((this.legendOneItemWidth * 2) / this.mainChart.stepX)
+
+      this.drawMainChart()
+
+    })
 
     const ctx = canvas.getContext("2d");
     if (!ctx) {

@@ -3,7 +3,6 @@ export interface IConfig {
   controlViewHeigth: number;
   legendViewHeigth: number;
   helperBoxHeight: number;
-  helperBoxWidth: number;
   helperBoxFont: string;
   gridLineCount: number;
   gridLineWidth: number;
@@ -34,7 +33,6 @@ const config: IConfig = {
 
   // helper box size in percent (0.15 = 15%)
   helperBoxHeight: 0.25,
-  helperBoxWidth: 0.25,
   // helper box fonts
   helperBoxFont: "serif",
   // axis legend font
@@ -84,6 +82,5 @@ const themes: { [name: string]: ITheme } = {
     unselectedColor: "#068dda44"
   }
 }
-
 
 export { config, themes }

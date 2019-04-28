@@ -1,20 +1,17 @@
 # Description
 
-My project helps you to draw beauty charts. I decide to make it to take part in telegram javascript contest.
+Chart drawing lib for telegram contest
 
 ## Contest
 
 ### Rules
 
 Telegram official coding competition for Android, iOS and JS developers.
-10-24 March 2019, 125,000 USD in prizes.
 
 The goal is to develop software for showing simple charts based on input data we provide. You can use either JavaScript, Android Java or iOS Swift. Note: you may not use specialized charting libraries. All the code you submit must be written by you from scratch.
 
 The criteria we’ll be using to define the winner are speed, efficiency and the size of the app.
 The app should show 4 charts on one screen, based on the input data we will provide within the next 24 hours. 
-
-We’ll distribute the 125,000 USD prize fund among the authors of the slickest apps in the final week of March.
 
 Stay tuned for contest-related announcements in this channel.
 Good luck!
@@ -39,13 +36,11 @@ IChartData {
 Initilize chart
 
 ```javascript
-const canvas = document.getElementById("chart1");
-const chart = new Chart(canvas, data, config);
+const container = document.getElementById("chart1");
+const chart = new Chart(container, data, config);
 ```
 
 ```javascript
-// set new data source
-chart.setData(data2)
 // lines
 chart.disableLine("someline")
 chart.enableLine("someline")
@@ -87,10 +82,12 @@ chart.toggleLine("someline")
 ## Optimization
 
 Canvas painting optimization
+
 - Save lines to Path2D and reuse it later instead of recalculation line
 - Don't use ctx.save() and ctx.restore()
 
 Javascript optimization
+
 - Don't create new heavy object or arrays to avoid garbage collection
 
 What didn't work:
@@ -101,9 +98,7 @@ What didn't work:
 
 ## TODO list
 
-- add selection box clicked animation
 - add grid rescale animation
-- make main chart helper box to not cross with helper line
 
 done:
 

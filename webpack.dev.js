@@ -4,6 +4,7 @@ const path = require("path");
 
 module.exports = merge(common, {
   mode: 'development',
+  watch: true,
   devtool: 'inline-source-map',
   devServer: {
     contentBase: './dist'
