@@ -1,6 +1,8 @@
-# Description
+# Telegram chart contest
 
-Chart drawing lib for telegram contest
+## Description
+
+Chart drawing lib for telegram contest. Working example: [link](https://jscommander.github.io/telegram-chart/)
 
 ## Contest
 
